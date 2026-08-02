@@ -1,4 +1,4 @@
-# Nupco Tickets — week1-2 Assessment
+#  Tickets — week1-2 Assessment
 
 A two-service mini-module for selling event tickets: a **Laravel REST API**
 (`tickets-backend`) that handles events, ticket types and orders, and a

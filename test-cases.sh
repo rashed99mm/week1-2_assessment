@@ -14,9 +14,13 @@
 #  Run the whole suite:
 #    bash test-cases.sh
 #
-#  The suite is self-contained: it creates its own event / ticket type /
-#  orders / payments and uses the returned ids, so it runs against any
-#  database state.
+#  The suite is self-contained: it registers a fresh user, creates its own
+#  event / ticket type / orders / payments and uses the returned ids, so it
+#  runs against any database state.
+#
+#  Auth: all Laravel resource routes require a JWT. The suite registers a
+#  user, captures the token and sends it automatically on every call.
+#  Login is rate limited (throttle:5,1) - wait a minute before re-running.
 #
 #  Mock gateway rule:
 #    approved  -> amount <= 1000 AND card_token starts with "4242"
@@ -25,15 +29,19 @@
 
 API="http://127.0.0.1:8000/api"
 GW="http://127.0.0.1:8001/api/v1"
+TOKEN=""
 
 say()  { printf "\n\033[1;36m### %s\033[0m\n" "$*"; }
 hr()   { printf "\033[1;34m%s\033[0m\n" "--------------------------------------------------------------------"; }
 
 # Post JSON, print body + status, print "id=..." extraction.
+# The Bearer token is attached automatically when TOKEN is set.
 # Usage: post <label> <url> <json>
 post() {
   say "$1"
-  resp=$(curl -s -w "\nHTTP %{http_code}" -X POST "$2" -H "Content-Type: application/json" -d "$3")
+  local hdr=()
+  [ -n "$TOKEN" ] && hdr=(-H "Authorization: Bearer $TOKEN")
+  resp=$(curl -s -w "\nHTTP %{http_code}" -X POST "$2" "${hdr[@]}" -H "Content-Type: application/json" -d "$3")
   echo "$resp"
   echo "$resp" | grep -oP '"id":\s*\K\d+' | head -1
 }
@@ -42,24 +50,73 @@ post() {
 # Usage: run <label> <method> <url> [json]
 run() {
   say "$1"
+  local hdr=()
+  [ -n "$TOKEN" ] && hdr=(-H "Authorization: Bearer $TOKEN")
   if [ -n "$4" ]; then
-    curl -s -w "\nHTTP %{http_code}\n" -X "$2" "$3" -H "Content-Type: application/json" -d "$4"
+    curl -s -w "\nHTTP %{http_code}\n" -X "$2" "$3" "${hdr[@]}" -H "Content-Type: application/json" -d "$4"
   else
-    curl -s -w "\nHTTP %{http_code}\n" -X "$2" "$3"
+    curl -s -w "\nHTTP %{http_code}\n" -X "$2" "$3" "${hdr[@]}"
   fi
 }
 
 hr
 
 # ---------------------------------------------------------------------
-# SETUP : create a fresh event + ticket type (used by every section)
+# 0. AUTH  (Laravel JWT)  - must run first; token used by every section
 # ---------------------------------------------------------------------
 stamp=$(date +%Y%m%d%H%M%S)
+email="curl${stamp}@example.com"
 
-event_id=$(post "0.1 POST /api/events -> create fresh event (expect 201)" "$API/events" \
+resp=$(curl -s -X POST "$API/auth/register" -H "Content-Type: application/json" \
+  -d "{\"name\":\"Curl User\",\"email\":\"$email\",\"password\":\"Secret123\",\"password_confirmation\":\"Secret123\"}")
+echo "$resp"
+echo "$resp" | grep -oP '"token":"\K[^"]+' | head -1
+TOKEN=$(echo "$resp" | grep -oP '"token":"\K[^"]+' | head -1)
+echo ""
+say "0.1 POST /api/auth/register -> create account (expect 201, token)"
+
+run "0.2 POST /api/auth/register -> duplicate email (expect 422)" POST "$API/auth/register" \
+  "{\"name\":\"Curl User\",\"email\":\"$email\",\"password\":\"Secret123\",\"password_confirmation\":\"Secret123\"}"
+run "0.3 GET /api/auth/me -> with token (expect 200)" GET "$API/auth/me"
+TOKEN="" run "0.4 GET /api/auth/me -> no token (expect 401)" GET "$API/auth/me"
+TOKEN="" run "0.5 GET /api/events -> no token (expect 401, protected route)" GET "$API/events"
+TOKEN="" run "0.6 POST /api/auth/login -> wrong password (expect 401)" POST "$API/auth/login" \
+  "{\"email\":\"$email\",\"password\":\"WrongPass\"}"
+
+resp=$(curl -s -X POST "$API/auth/login" -H "Content-Type: application/json" \
+  -d "{\"email\":\"$email\",\"password\":\"Secret123\"}")
+echo "$resp"
+echo "$resp" | grep -oP '"token":"\K[^"]+' | head -1
+TOKEN=$(echo "$resp" | grep -oP '"token":"\K[^"]+' | head -1)
+echo ""
+say "0.7 POST /api/auth/login -> valid credentials (expect 200, token)"
+
+resp=$(curl -s -X POST "$API/auth/refresh" -H "Authorization: Bearer $TOKEN")
+echo "$resp"
+echo "$resp" | grep -oP '"token":"\K[^"]+' | head -1
+TOKEN=$(echo "$resp" | grep -oP '"token":"\K[^"]+' | head -1)
+echo ""
+say "0.8 POST /api/auth/refresh -> issue fresh token (expect 200)"
+
+old_token="$TOKEN"
+run "0.9 POST /api/auth/logout -> blacklist current token (expect 200)" POST "$API/auth/logout"
+TOKEN="$old_token" run "0.10 GET /api/auth/me -> blacklisted token (expect 401)" GET "$API/auth/me"
+
+resp=$(curl -s -X POST "$API/auth/login" -H "Content-Type: application/json" \
+  -d "{\"email\":\"$email\",\"password\":\"Secret123\"}")
+echo "$resp"
+echo "$resp" | grep -oP '"token":"\K[^"]+' | head -1
+TOKEN=$(echo "$resp" | grep -oP '"token":"\K[^"]+' | head -1)
+echo ""
+say "0.11 POST /api/auth/login -> re-login after logout (expect 200)"
+
+# ---------------------------------------------------------------------
+# SETUP : create a fresh event + ticket type (used by every section)
+# ---------------------------------------------------------------------
+event_id=$(post "0.12 POST /api/events -> create fresh event (expect 201)" "$API/events" \
   "{\"title\":\"Curl Test $stamp\",\"description\":\"created by curl suite\",\"venue\":\"Test Hall\",\"starts_at\":\"2026-10-01T18:00:00\",\"total_tickets\":100,\"status\":\"published\"}")
 
-ticket_id=$(post "0.2 POST /api/ticket-types -> create fresh ticket type (expect 201)" "$API/ticket-types" \
+ticket_id=$(post "0.13 POST /api/ticket-types -> create fresh ticket type (expect 201)" "$API/ticket-types" \
   "{\"event_id\":$event_id,\"name\":\"General Admission\",\"price\":50.00,\"quantity\":300}")
 
 printf "\n  -> using event_id=%s ticket_type_id=%s\n" "$event_id" "$ticket_id"

@@ -61,7 +61,8 @@ Every endpoint from both services returns the same shape:
 
 ```powershell
 # 1. Backend (from tickets-backend/)
-php artisan migrate:fresh --seed
+php artisan jwt:secret                # writes JWT_SECRET to .env
+php artisan migrate:fresh --seed      # seed includes admin@example.com / password
 php artisan serve --host=127.0.0.1 --port=8000
 
 # 2. Gateway (from payment-gateway/, inside the .venv)
@@ -71,7 +72,7 @@ php artisan serve --host=127.0.0.1 --port=8000
 ### Run the test suites
 ```powershell
 # PHP (tickets-backend) — unit + feature, SQLite in-memory
-php artisan test
+php artisan test          # 53 tests / 149 assertions
 
 # Python (payment-gateway) — schema / service / API tests
 .venv\Scripts\python -m pytest tests -v
@@ -86,9 +87,10 @@ powershell -ExecutionPolicy Bypass -File test-cases.ps1
 bash test-cases.sh
 ```
 
-Both suites are **self-contained**: they create their own event, ticket type,
-orders and payments and use the returned ids, so they run against any database
-state. See `test-cases.ps1` / `test-cases.sh` in the project root.
+Both suites are **self-contained**: they register a fresh user (all Laravel
+routes require a JWT), create their own event, ticket type, orders and payments
+and use the returned ids, so they run against any database state. See
+`test-cases.ps1` / `test-cases.sh` in the project root.
 
 ---
 

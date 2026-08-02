@@ -52,11 +52,15 @@ Every endpoint returns the same shape:
 ```powershell
 cd tickets-backend
 composer install
+php artisan jwt:secret          # generates JWT_SECRET in .env
 php artisan migrate:fresh --seed
 php artisan serve --host=127.0.0.1 --port=8000
 ```
 
-`.env`: `DB_CONNECTION=sqlite`, `PAYMENT_GATEWAY_URL=http://127.0.0.1:8001`
+`.env`: `DB_CONNECTION=sqlite`, `PAYMENT_GATEWAY_URL=http://127.0.0.1:8001`,
+`JWT_SECRET=<generated>` (jwt-auth sets it via `php artisan jwt:secret`).
+
+Seed data creates the demo account **`admin@example.com` / `password`**.
 
 ### 2. payment-gateway (FastAPI)
 
@@ -74,6 +78,11 @@ Interactive docs: http://127.0.0.1:8001/docs
 ### tickets-backend — `/api`
 | Method | URI | Description |
 |---|---|---|
+| POST | `/auth/register` | Create account → `{ user, token }` (public) |
+| POST | `/auth/login` | Login → `{ user, token }` (public, rate-limited) |
+| POST | `/auth/logout` | Invalidate token (Bearer) |
+| POST | `/auth/refresh` | Issue fresh token (Bearer) |
+| GET | `/auth/me` | Current user (Bearer) |
 | GET/POST | `/events` | List / create |
 | GET/PUT/DELETE | `/events/{id}` | Show / update / soft delete |
 | GET/POST | `/ticket-types` | List (filter `?event_id=`) / create |
@@ -81,6 +90,9 @@ Interactive docs: http://127.0.0.1:8001/docs
 | GET/POST | `/orders` | List / create (computes totals, checks stock) |
 | GET | `/orders/{id}` | Show |
 | POST | `/orders/{id}/pay` | Charge via the gateway |
+
+> Every route except `auth/register` and `auth/login` requires
+> `Authorization: Bearer <token>` (JWT, HS256).
 
 ### payment-gateway — `/api/v1`
 | Method | URI | Description |
@@ -94,7 +106,7 @@ Interactive docs: http://127.0.0.1:8001/docs
 
 ```powershell
 # PHP — unit + feature (SQLite in-memory)
-php artisan test          # 41 tests / 106 assertions
+php artisan test          # 53 tests / 149 assertions
 
 # Python — schema / service / API
 .venv\Scripts\python -m pytest tests -v   # 23 tests

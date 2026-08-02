@@ -5,10 +5,11 @@ namespace Database\Seeders;
 use App\Models\Event;
 use App\Models\Order;
 use App\Models\TicketType;
+use App\Models\User;
 use Illuminate\Database\Seeder;
 
 /**
- * Seeds the database with a demo event, ticket types and orders.
+ * Seeds the database with a demo user, event, ticket types and orders.
  */
 class DatabaseSeeder extends Seeder
 {
@@ -17,6 +18,12 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        User::create([
+            'name' => 'Demo Admin',
+            'email' => 'admin@example.com',
+            'password' => 'password',
+        ]);
+
         $event = Event::create([
             'title' => 'Summer Music Festival',
             'description' => 'A weekend of live music, food and fun.',

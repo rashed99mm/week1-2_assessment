@@ -22,6 +22,7 @@ Mapping the patterns used in this project (`tickets-backend` = PHP/Laravel,
 | Error handling | try/catch → status codes | `HTTPException` | Exceptions + middleware / `IExceptionHandler` |
 | Health check | route | `GET /health` | `AddHealthChecks()` / `MapHealthChecks()` |
 | Soft delete | `SoftDeletes` trait | — | Global query filter (`IsDeleted`) |
+| Auth | `php-open-source-saver/jwt-auth` guard + `JWTSubject` | — | `AddAuthentication().AddJwtBearer()` |
 | Testing | PHPUnit (`php artisan test`) | pytest + `TestClient` | xUnit + `WebApplicationFactory<T>` |
 
 ---
@@ -58,6 +59,10 @@ Mapping the patterns used in this project (`tickets-backend` = PHP/Laravel,
 | 26 | **Integration/API tests** | `tests/Feature/*` + `RefreshDatabase` (SQLite memory) | pytest + `TestClient` + in-memory SQLite | xUnit + `WebApplicationFactory<T>` + EF InMemory / Testcontainers |
 | 27 | **Mock gateway rule** | `PaymentService::charge` (success/failed) | `amount <= 1000 and token.startswith("4242")` | same logic in a `PaymentService` / `IGatewayClient` stub |
 | 28 | **Reference / unique id** | DB auto-increment | `TXN-{uuid.uuid4().hex[:16].upper()}` | `"TXN-" + Guid.NewGuid().ToString("N")[..16].ToUpperInvariant()` |
+| 29 | **Register / login DTO** | `RegisterRequest` / `LoginRequest` (`FormRequest`) | — (gateway is public) | `RegisterRequest`/`LoginRequest` records + `[Required]`/`[EmailAddress]`, `Password` + `PasswordConfirmation` compared |
+| 30 | **JWT token lifecycle** | `auth('api')->login($user)` / `attempt()` / `logout()` / `refresh()`; blacklist | — | `TokenService` + `ITokenService` (JwtSecurityTokenHandler), `AddJwtBearer` middleware |
+| 31 | **Password hashing** | `hashed` cast (bcrypt via `Hash::make`) | — | `IPasswordHasher<TUser>` / `BCrypt.Net` |
+| 32 | **Protected route / 401** | `middleware('jwt.auth')` on resource routes; `UnauthorizedHttpException` → `ApiResponse` `401` | — | `[Authorize]` attribute + JWT bearer middleware returning `401` |
 
 ---
 

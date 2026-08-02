@@ -6,6 +6,7 @@ use App\Models\Event;
 use App\Models\Order;
 use App\Models\TicketType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\AuthenticatesApi;
 use Tests\TestCase;
 
 /**
@@ -14,6 +15,16 @@ use Tests\TestCase;
 class TicketTypeApiTest extends TestCase
 {
     use RefreshDatabase;
+    use AuthenticatesApi;
+
+    /**
+     * Authenticate every request against the JWT guard.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->authenticateApi();
+    }
 
     /**
      * Create a seeded event.

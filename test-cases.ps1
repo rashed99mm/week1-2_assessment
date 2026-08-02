@@ -11,9 +11,13 @@
 #  Run the whole suite:
 #    powershell -ExecutionPolicy Bypass -File test-cases.ps1
 #
-#  The suite is self-contained: it creates its own event / ticket type /
-#  orders / payments and uses the returned ids, so it runs against any
-#  database state.
+#  The suite is self-contained: it registers a fresh user, creates its own
+#  event / ticket type / orders / payments and uses the returned ids, so it
+#  runs against any database state.
+#
+#  Auth: all Laravel resource routes require a JWT. The suite registers a
+#  user, captures the token and sends it automatically on every call.
+#  Login is rate limited (throttle:5,1) - wait a minute before re-running.
 #
 #  Mock gateway rule:
 #    approved  -> amount <= 1000 AND card_token starts with "4242"
@@ -24,6 +28,9 @@ $ErrorActionPreference = 'Continue'
 $API = "http://127.0.0.1:8000/api"
 $GW  = "http://127.0.0.1:8001/api/v1"
 
+# JWT captured during the AUTH section and attached to every protected call.
+$script:AuthToken = $null
+
 function Say([string]$Label) {
     Write-Host ""
     Write-Host "### $Label" -ForegroundColor Cyan
@@ -32,9 +39,16 @@ function Say([string]$Label) {
 # Runs curl.exe with a JSON body passed via a temp file (avoids PowerShell
 # 5.1 native-argument quoting bugs). Prints the response body + status and
 # returns { status, json }.
-function Invoke-Curl([string]$Label, [string]$Method, [string]$Url, $Payload = $null) {
+# The Bearer token (if captured) is attached automatically unless -SkipAuth.
+function Invoke-Curl([string]$Label, [string]$Method, [string]$Url, $Payload = $null, [switch]$SkipAuth, $Headers = @{}) {
     Say $Label
     $args = @("-s", "-X", $Method, $Url)
+    if ((-not $SkipAuth) -and $script:AuthToken) {
+        $args += @("-H", "Authorization: Bearer $($script:AuthToken)")
+    }
+    foreach ($h in $Headers.GetEnumerator()) {
+        $args += @("-H", "$($h.Key): $($h.Value)")
+    }
     $file = $null
     if ($null -ne $Payload) {
         $file = Join-Path $env:TEMP ("curl_" + [guid]::NewGuid().ToString("N") + ".json")
@@ -61,11 +75,64 @@ function Invoke-Curl([string]$Label, [string]$Method, [string]$Url, $Payload = $
 Write-Host "--------------------------------------------------------------------" -ForegroundColor Blue
 
 # ---------------------------------------------------------------------
-# SETUP : create a fresh event + ticket type (used by every section)
+# 0. AUTH  (Laravel JWT)  - must run first; token used by every section
 # ---------------------------------------------------------------------
 $stamp = Get-Date -Format "yyyyMMddHHmmss"
+$email = "curl$stamp@example.com"
 
-$ev = Invoke-Curl "0.1 POST /api/events -> create fresh event (expect 201)" "POST" "$API/events" @{
+$rg = Invoke-Curl "0.1 POST /api/auth/register -> create account (expect 201, token)" "POST" "$API/auth/register" -SkipAuth @{
+    name                  = "Curl User"
+    email                 = $email
+    password              = "Secret123"
+    password_confirmation = "Secret123"
+}
+$script:AuthToken = $rg.json.data.token
+
+Invoke-Curl "0.2 POST /api/auth/register -> duplicate email (expect 422)" "POST" "$API/auth/register" -SkipAuth @{
+    name                  = "Curl User"
+    email                 = $email
+    password              = "Secret123"
+    password_confirmation = "Secret123"
+} | Out-Null
+
+Invoke-Curl "0.3 GET /api/auth/me -> with token (expect 200)" "GET" "$API/auth/me" | Out-Null
+
+Invoke-Curl "0.4 GET /api/auth/me -> no token (expect 401)" "GET" "$API/auth/me" -SkipAuth | Out-Null
+
+Invoke-Curl "0.5 GET /api/events -> no token (expect 401, protected route)" "GET" "$API/events" -SkipAuth | Out-Null
+
+Invoke-Curl "0.6 POST /api/auth/login -> wrong password (expect 401)" "POST" "$API/auth/login" -SkipAuth @{
+    email    = $email
+    password = "WrongPass"
+} | Out-Null
+
+$lg = Invoke-Curl "0.7 POST /api/auth/login -> valid credentials (expect 200, token)" "POST" "$API/auth/login" -SkipAuth @{
+    email    = $email
+    password = "Secret123"
+}
+$script:AuthToken = $lg.json.data.token
+
+$rf = Invoke-Curl "0.8 POST /api/auth/refresh -> issue fresh token (expect 200)" "POST" "$API/auth/refresh"
+$script:AuthToken = $rf.json.data.token
+
+$oldToken = $script:AuthToken
+Invoke-Curl "0.9 POST /api/auth/logout -> blacklist current token (expect 200)" "POST" "$API/auth/logout"
+$script:AuthToken = $null
+
+Invoke-Curl "0.10 GET /api/auth/me -> blacklisted token (expect 401)" "GET" "$API/auth/me" -Headers @{ Authorization = "Bearer $oldToken" } | Out-Null
+
+$lg2 = Invoke-Curl "0.11 POST /api/auth/login -> re-login after logout (expect 200)" "POST" "$API/auth/login" -SkipAuth @{
+    email    = $email
+    password = "Secret123"
+}
+$script:AuthToken = $lg2.json.data.token
+
+Write-Host "  -> authenticated as $email with token" -ForegroundColor DarkGray
+
+# ---------------------------------------------------------------------
+# SETUP : create a fresh event + ticket type (used by every section)
+# ---------------------------------------------------------------------
+$ev = Invoke-Curl "0.12 POST /api/events -> create fresh event (expect 201)" "POST" "$API/events" @{
     title       = "Curl Test $stamp"
     description = "created by curl suite"
     venue       = "Test Hall"
@@ -75,7 +142,7 @@ $ev = Invoke-Curl "0.1 POST /api/events -> create fresh event (expect 201)" "POS
 }
 $eventId = $ev.json.data.id
 
-$tt = Invoke-Curl "0.2 POST /api/ticket-types -> create fresh ticket type (expect 201)" "POST" "$API/ticket-types" @{
+$tt = Invoke-Curl "0.13 POST /api/ticket-types -> create fresh ticket type (expect 201)" "POST" "$API/ticket-types" @{
     event_id = $eventId
     name     = "General Admission"
     price    = 50.00

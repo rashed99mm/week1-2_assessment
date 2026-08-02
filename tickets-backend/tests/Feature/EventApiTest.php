@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Event;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\AuthenticatesApi;
 use Tests\TestCase;
 
 /**
@@ -12,6 +13,16 @@ use Tests\TestCase;
 class EventApiTest extends TestCase
 {
     use RefreshDatabase;
+    use AuthenticatesApi;
+
+    /**
+     * Authenticate every request against the JWT guard.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->authenticateApi();
+    }
 
     /**
      * Build a valid event payload.

@@ -54,11 +54,31 @@ cd tickets-backend
 composer install
 php artisan jwt:secret          # generates JWT_SECRET in .env
 php artisan migrate:fresh --seed
+php artisan storage:link        # serves event cover images from /storage
 php artisan serve --host=127.0.0.1 --port=8000
 ```
 
-`.env`: `DB_CONNECTION=sqlite`, `PAYMENT_GATEWAY_URL=http://127.0.0.1:8001`,
+If `storage:link` fails with `symlink(): error code(1314)` — Windows without
+Developer Mode and a non-elevated shell — create a junction instead, which
+needs no extra privileges:
+
+```powershell
+cmd /c mklink /J "public\storage" "storage\app\public"
+```
+
+`.env`: `DB_CONNECTION=sqlite`, `APP_URL=http://127.0.0.1:8000`,
+`PAYMENT_GATEWAY_URL=http://127.0.0.1:8001`,
 `JWT_SECRET=<generated>` (jwt-auth sets it via `php artisan jwt:secret`).
+
+Event cover images are uploaded through the admin panel and stored on the
+`public` disk under `covers/`. Uploads are capped at 4 MB, which requires
+`upload_max_filesize` / `post_max_size` in `php.ini` to be at least that large.
+Events without a cover fall back to a generated poster in the frontend. To add
+demo covers to an existing database without reseeding:
+
+```powershell
+php artisan db:seed --class=EventCoverSeeder
+```
 
 Seed data creates the demo account **`admin@example.com` / `password`**.
 

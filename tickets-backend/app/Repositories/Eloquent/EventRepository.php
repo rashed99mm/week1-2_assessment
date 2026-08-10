@@ -24,6 +24,13 @@ class EventRepository implements EventRepositoryInterface
             if ($value !== null && $value !== '') {
                 if ($field === 'status') {
                     $query->where($field, $value);
+                } elseif ($field === 'event_type_id') {
+                    $query->where($field, (int) $value);
+                } elseif ($field === 'search') {
+                    $query->where(function ($q) use ($value): void {
+                        $q->where('title', 'like', "%$value%")
+                            ->orWhere('venue', 'like', "%$value%");
+                    });
                 } else {
                     $query->where($field, 'like', "%$value%");
                 }

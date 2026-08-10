@@ -3,10 +3,12 @@
 namespace App\Providers;
 
 use App\Repositories\Contracts\EventRepositoryInterface;
+use App\Repositories\Contracts\EventTypeRepositoryInterface;
 use App\Repositories\Contracts\OrderRepositoryInterface;
 use App\Repositories\Contracts\TicketTypeRepositoryInterface;
 use App\Repositories\Contracts\UserRepositoryInterface;
 use App\Repositories\Eloquent\EventRepository;
+use App\Repositories\Eloquent\EventTypeRepository;
 use App\Repositories\Eloquent\OrderRepository;
 use App\Repositories\Eloquent\TicketTypeRepository;
 use App\Repositories\Eloquent\UserRepository;
@@ -23,6 +25,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(EventRepositoryInterface::class, EventRepository::class);
+        $this->app->bind(EventTypeRepositoryInterface::class, EventTypeRepository::class);
         $this->app->bind(TicketTypeRepositoryInterface::class, TicketTypeRepository::class);
         $this->app->bind(OrderRepositoryInterface::class, OrderRepository::class);
         $this->app->bind(UserRepositoryInterface::class, UserRepository::class);

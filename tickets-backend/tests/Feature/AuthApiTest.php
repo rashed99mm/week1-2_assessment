@@ -133,10 +133,47 @@ class AuthApiTest extends TestCase
         $this->getJson('/api/auth/me')->assertStatus(401)
             ->assertJsonPath('success', false)
             ->assertJsonPath('status_code', 401);
-        $this->getJson('/api/events')->assertStatus(401)
+        $this->getJson('/api/orders')->assertStatus(401)
             ->assertJsonPath('success', false);
         $this->postJson('/api/events', [])->assertStatus(401)
             ->assertJsonPath('success', false);
+    }
+
+    /**
+     * Verify public read-only routes (events, event types, availability)
+     * are accessible without a token.
+     */
+    public function test_public_browsing_routes_do_not_require_token(): void
+    {
+        $eventType = \App\Models\EventType::create([
+            'name' => 'Concert',
+            'slug' => 'concert',
+            'is_online' => false,
+            'seating_model' => 'assigned',
+        ]);
+        $event = \App\Models\Event::create([
+            'title' => 'Open Air Night',
+            'description' => 'A public browsing test event.',
+            'venue' => 'Riverside Park',
+            'event_type_id' => $eventType->id,
+            'starts_at' => now()->addDays(2),
+            'total_tickets' => 100,
+            'status' => 'published',
+        ]);
+        \App\Models\TicketType::create([
+            'event_id' => $event->id,
+            'name' => 'General',
+            'price' => 25.00,
+            'quantity' => 100,
+        ]);
+
+        $this->getJson('/api/events')->assertOk()
+            ->assertJsonPath('success', true);
+        $this->getJson('/api/event-types')->assertOk()
+            ->assertJsonPath('success', true);
+        $this->getJson("/api/events/{$event->id}/availability")->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.ticket_types.0.sold', 0);
     }
 
     /**

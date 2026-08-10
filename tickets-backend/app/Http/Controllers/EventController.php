@@ -64,6 +64,26 @@ class EventController extends Controller
     }
 
     /**
+     * Show seat availability (sold counts per ticket type) for an event.
+     *
+     * Public read-only endpoint so visitors can see which seats are taken
+     * without exposing order or customer data.
+     *
+     * @param  mixed  $id  Event id.
+     * @return JsonResponse
+     */
+    public function availability($id)
+    {
+        try {
+            $availability = $this->service->availability($id);
+
+            return ApiResponse::success($availability, 'Availability fetched successfully.');
+        } catch (ModelNotFoundException $e) {
+            return ApiResponse::error('Event not found.', null, 404);
+        }
+    }
+
+    /**
      * Store a newly created event.
      *
      * @param  StoreEventRequest  $request  Validated create payload.

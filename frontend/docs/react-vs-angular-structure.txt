@@ -1,0 +1,236 @@
+================================================================================
+REACT vs ANGULAR — FILES, PROJECT STRUCTURE AND COMMANDS
+================================================================================
+The React column describes this repository's actual frontend/ app
+(React 19 + TypeScript + Vite 8 + Tailwind v4). The Angular column describes
+what the equivalent app would look like using modern Angular (standalone
+components + signals). Line counts and paths on the React side are real.
+
+
+--------------------------------------------------------------------------------
+1. PROJECT ROOT
+--------------------------------------------------------------------------------
+
+REACT (this repo)                     ANGULAR (equivalent)
+-----------------                     --------------------
+frontend/                             frontend/
+  index.html          <- entry HTML     src/index.html
+  package.json                          package.json
+  vite.config.ts      <- build+proxy    angular.json     <- build/serve/test config
+  tsconfig.json       <- project refs    tsconfig.json
+  tsconfig.app.json                     tsconfig.app.json
+  tsconfig.node.json                    tsconfig.spec.json
+  public/             <- static assets  public/
+  src/                                  src/
+
+Key difference:
+  Vite keeps build config in ONE small file you edit directly (vite.config.ts,
+  ~20 lines here: React plugin, Tailwind plugin, and proxies for /api and
+  /storage).
+  Angular keeps it in angular.json, a large generated JSON describing named
+  build targets (build / serve / test), file replacements per environment, and
+  asset globs. You mostly change it through `ng` commands rather than by hand.
+
+
+--------------------------------------------------------------------------------
+2. SOURCE LAYOUT
+--------------------------------------------------------------------------------
+
+REACT (actual, 61 files)              ANGULAR (equivalent)
+-------------------------             --------------------
+src/                                  src/
+  main.tsx        <- bootstrap          main.ts          <- bootstrapApplication
+  App.tsx         <- route table        app/app.routes.ts
+  index.css       <- Tailwind @theme    styles.css
+  vite-env.d.ts                         ---
+
+  components/                           app/shared/  (or app/components/)
+    ui/       (11) Button, Card...        ui/button/button.component.ts
+    layout/   (4)  Navbar, Footer...      layout/navbar/navbar.component.ts
+    events/   (4)  EventCard...           events/event-card/...
+    seats/    (8)  SeatMap2D, Venue3D     seats/seat-map/...
+    landing/  (2)  HeroAmbient...         landing/hero/...
+
+  pages/                                app/pages/   (routed components)
+    events/   (4)                          events/
+    admin/    (4)                          admin/
+    auth/     (3)                          auth/
+    orders/   (2)                          orders/
+
+  context/  (1)   AuthContext           app/core/auth.service.ts   <- injectable
+  lib/      (12)  api, tokens, venue... app/core/  + app/utils/
+  types/    (1)   shared interfaces     app/models/
+
+FILE-COUNT NOTE
+  React: one component = one .tsx file. 60 files total.
+  Angular: one component traditionally = 3-4 files
+           (.component.ts / .component.html / .component.css / .component.spec.ts)
+           so the same app lands nearer 150-200 files.
+           Modern Angular can inline template+styles to cut this down.
+
+
+--------------------------------------------------------------------------------
+3. FILE-TYPE MAPPING
+--------------------------------------------------------------------------------
+
+CONCEPT              REACT (this repo)              ANGULAR
+-------              -----------------              -------
+Entry point          src/main.tsx                   src/main.ts
+Root component       src/App.tsx                    src/app/app.component.ts
+Routes               App.tsx <Routes><Route>        app.routes.ts (Routes array)
+Component            Button.tsx                     button.component.ts (+.html)
+Template             JSX inside the function        button.component.html
+Styles               Tailwind classes in JSX        button.component.css (scoped)
+Shared state         context/AuthContext.tsx        core/auth.service.ts (@Injectable)
+HTTP layer           lib/api.ts (fetch wrapper)     HttpClient + interceptor
+Types                types/index.ts                 models/*.model.ts
+Route guard          <Protected> wrapper component  CanActivateFn guard function
+Reusable logic       hooks (usePrefersReducedMotion) services, or signals
+Global styles        src/index.css                  src/styles.css
+Env config           import.meta.env.*              environments/environment.ts
+
+
+--------------------------------------------------------------------------------
+4. ROUTING — SIDE BY SIDE
+--------------------------------------------------------------------------------
+
+REACT — routes are components, declared as JSX (see src/App.tsx):
+
+  <Routes>
+    <Route element={<Layout />}>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/events/:id/seats" element={<SeatBookingPage />} />
+      <Route element={<Protected />}>
+        <Route path="/orders" element={<OrdersPage />} />
+      </Route>
+    </Route>
+  </Routes>
+
+  - Guards are just components that render <Navigate> or an <Outlet>.
+  - Params: const { id } = useParams()
+  - Lazy loading, as actually written in src/components/seats/SeatViewer.tsx:
+
+        const Venue3DLazy = lazy(() =>
+          import('./Venue3D').then((m) => ({ default: m.Venue3D })))
+
+    The .then() is not optional: React.lazy resolves to a module whose DEFAULT
+    export is the component, and Venue3D is a named export, so it has to be
+    remapped. Angular's loadComponent takes the named export directly.
+
+ANGULAR — routes are a data structure:
+
+  export const routes: Routes = [
+    { path: '', component: LayoutComponent, children: [
+      { path: '', component: LandingComponent },
+      { path: 'events/:id/seats', component: SeatBookingComponent },
+      { path: 'orders', component: OrdersComponent, canActivate: [authGuard] },
+    ]},
+  ];
+
+  - Guards are functions returning boolean | UrlTree.
+  - Lazy loading: loadComponent: () => import('./venue3d').then(m => m.Venue3D)
+  - Params: inject(ActivatedRoute).snapshot.paramMap.get('id')
+
+
+--------------------------------------------------------------------------------
+5. RUN COMMANDS
+--------------------------------------------------------------------------------
+
+TASK                 REACT / VITE (this repo)       ANGULAR CLI
+----                 ------------------------       -----------
+Install              npm install                    npm install
+Dev server           npm run dev                    ng serve
+                     -> http://localhost:5173       -> http://localhost:4200
+Dev on a port        npm run dev -- --port 3000     ng serve --port 3000
+Production build     npm run build                  ng build
+                     (tsc -b && vite build)         (production is the default)
+Preview the build    npm run preview                ng serve (no true equivalent;
+                                                    use any static server on dist/)
+Type check only      npm run typecheck              ng build --configuration development
+                     (tsc -b --noEmit)              (or tsc --noEmit)
+Unit tests           (not configured here)          ng test          <- Karma/Jest
+E2E tests            (not configured here)          ng e2e
+Lint                 (not configured here)          ng lint
+New component        create a .tsx file by hand     ng generate component seats/seat-map
+New service          create a .ts file by hand      ng generate service core/auth
+Upgrade major        npm install pkg@latest,        ng update @angular/core @angular/cli
+                     fix breakages manually         <- runs automated code migrations
+Output directory     dist/                          dist/<project-name>/
+
+Scripts defined in this repo's package.json:
+  dev        vite
+  build      tsc -b && vite build
+  preview    vite preview
+  typecheck  tsc -b --noEmit
+
+
+--------------------------------------------------------------------------------
+6. GENERATION: THE BIGGEST DAY-TO-DAY DIFFERENCE
+--------------------------------------------------------------------------------
+
+ANGULAR
+  ng generate component seats/seat-map
+
+  creates, and registers where needed:
+    seat-map.component.ts
+    seat-map.component.html
+    seat-map.component.css
+    seat-map.component.spec.ts
+
+REACT
+  There is no generator. You create SeatMap.tsx yourself and export a function.
+  Nothing to register anywhere; you import it where you use it.
+
+  Consequence: React project structure is a team convention, not a rule.
+  This repo's convention is:
+      components/<domain>/  reusable UI
+      pages/<domain>/       route-level screens
+      lib/                  framework-free helpers (no React imports)
+      context/              cross-cutting state
+      types/                shared interfaces
+  Nothing enforces it. In Angular the CLI enforces a shape for you.
+
+
+--------------------------------------------------------------------------------
+7. STATE AND DEPENDENCY INJECTION
+--------------------------------------------------------------------------------
+
+REACT (this repo)
+  - Auth lives in context/AuthContext.tsx, provided at the app root and read
+    with a useAuth() hook.
+  - Everything else is local useState in the page that needs it.
+  - lib/api.ts is a plain module; components import it directly.
+  - No DI container. Swapping the API layer in a test means module mocking.
+
+ANGULAR
+  - AuthService is @Injectable({ providedIn: 'root' }) and injected into any
+    component or other service that asks for it.
+  - HttpClient is injected the same way, with interceptors for the JWT header.
+  - DI makes substitution trivial: provide a fake in the test module.
+  - Cost: you must understand injectors and provider scope.
+
+
+--------------------------------------------------------------------------------
+8. WHEN TO PREFER WHICH
+--------------------------------------------------------------------------------
+
+PREFER REACT WHEN
+  - You need a specific ecosystem library. This app uses @react-three/fiber for
+    the 3D venue; that binding is the most mature 3D integration available.
+  - The app is small enough that framework ceremony would outweigh its benefit.
+  - You want the freedom to assemble your own stack.
+
+PREFER ANGULAR WHEN
+  - A large or rotating team benefits from one enforced way of doing things.
+  - Heavy forms: Reactive Forms with built-in validation beats hand-rolling.
+  - Long-lived product: `ng update` migrating your code across major versions is
+    a genuine maintenance advantage.
+  - You want routing, HTTP, DI, forms and testing decided for you on day one.
+
+HONEST TRADE-OFF
+  React's flexibility is also its cost. This repo had to decide on routing,
+  auth storage, data fetching and a design-token strategy, and had to hand-roll
+  memoisation. Angular would have supplied answers to all of those, at the price
+  of more concepts up front and roughly three times as many files.
+
+================================================================================

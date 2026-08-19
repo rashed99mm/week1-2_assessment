@@ -11,8 +11,6 @@ import { SeatBookingPage } from './pages/events/SeatBookingPage'
 import { CheckoutPage } from './pages/events/CheckoutPage'
 import { OrdersPage } from './pages/orders/OrdersPage'
 import { OrderDetailPage } from './pages/orders/OrderDetailPage'
-import { AdminEventsPage } from './pages/admin/AdminEventsPage'
-import { AdminTicketTypesPage } from './pages/admin/AdminTicketTypesPage'
 import type { ReactNode } from 'react'
 
 function FullScreenLoader() {
@@ -79,8 +77,6 @@ export default function App() {  return (
               <Route path="/checkout" element={<CheckoutPage />} />
               <Route path="/orders" element={<OrdersPage />} />
               <Route path="/orders/:id" element={<OrderDetailPage />} />
-              <Route path="/admin/events" element={<AdminEventsPage />} />
-              <Route path="/admin/ticket-types" element={<AdminTicketTypesPage />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

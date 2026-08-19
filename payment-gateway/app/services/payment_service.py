@@ -1,10 +1,12 @@
 """Business logic for the mock payment gateway."""
 
 import uuid
+from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.payment import Payment
 from app.schemas.payment import ChargeRequest
 
@@ -17,12 +19,20 @@ class PaymentService:
     """Mock payment gateway business logic.
 
     Approval rule (Stripe-like test behaviour):
-    - approved when amount <= 1000.0 AND card_token starts with "4242"
+    - approved when amount <= the configured limit AND card_token starts with
+      the configured prefix
     - declined otherwise
     """
 
-    MAX_APPROVED_AMOUNT = 1000.0
-    APPROVED_CARD_PREFIX = "4242"
+    @property
+    def max_approved_amount(self) -> Decimal:
+        """The largest amount this mock will approve."""
+        return Decimal(str(settings.APPROVAL_LIMIT))
+
+    @property
+    def approved_card_prefix(self) -> str:
+        """The card-token prefix this mock treats as a good card."""
+        return settings.APPROVED_CARD_PREFIX
 
     def __init__(self, db: Session) -> None:
         """Initialize the service with a database session."""
@@ -41,9 +51,8 @@ class PaymentService:
         Returns:
             The stored payment with status success or failed.
         """
-        approved = (
-            payload.amount <= self.MAX_APPROVED_AMOUNT
-            and payload.card_token.startswith(self.APPROVED_CARD_PREFIX)
+        approved = payload.amount <= self.max_approved_amount and payload.card_token.startswith(
+            self.approved_card_prefix
         )
 
         payment = Payment(

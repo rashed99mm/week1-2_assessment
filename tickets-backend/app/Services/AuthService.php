@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Domain\Events\DomainEventRecorder;
+use App\Domain\Events\UserRegistered;
+use App\Enums\UserRole;
 use App\Exceptions\InvalidCredentialsException;
 use App\Models\User;
 use App\Repositories\Contracts\UserRepositoryInterface;
@@ -17,14 +20,18 @@ class AuthService
 {
     protected UserRepositoryInterface $users;
 
+    protected DomainEventRecorder $events;
+
     /**
-     * Inject the user repository.
+     * Inject the user repository and event recorder.
      *
      * @param  UserRepositoryInterface  $users  User persistence contract.
+     * @param  DomainEventRecorder  $events  Writes domain events to the outbox.
      */
-    public function __construct(UserRepositoryInterface $users)
+    public function __construct(UserRepositoryInterface $users, DomainEventRecorder $events)
     {
         $this->users = $users;
+        $this->events = $events;
     }
 
     /**
@@ -34,7 +41,7 @@ class AuthService
      * User model. Emails are normalized to lowercase.
      *
      * @param  array<string, mixed>  $data  Validated register payload.
-     * @return array{user: User, token: string}  The created user and JWT.
+     * @return array{user: User, token: string} The created user and JWT.
      */
     public function register(array $data): array
     {
@@ -42,7 +49,16 @@ class AuthService
             'name' => $data['name'],
             'email' => strtolower($data['email']),
             'password' => $data['password'],
+            // Set explicitly rather than leaning on the column default. The
+            // default applies in the database, but the model instance returned
+            // here would not know its own role, and minting a token from it
+            // reads that attribute. Being explicit also keeps the fact that
+            // public registration never grants privileges visible in code —
+            // `role` is fillable, so this is the one place that decides it.
+            'role' => UserRole::User->value,
         ]);
+
+        $this->events->record(new UserRegistered($user));
 
         $token = auth('api')->login($user);
 
@@ -53,7 +69,7 @@ class AuthService
      * Authenticate a user and issue a signed token.
      *
      * @param  array<string, string>  $credentials  Email and password pair.
-     * @return array{user: User, token: string}  The authenticated user and JWT.
+     * @return array{user: User, token: string} The authenticated user and JWT.
      *
      * @throws InvalidCredentialsException When the credentials are invalid.
      */
@@ -65,7 +81,7 @@ class AuthService
         ]);
 
         if (! $token) {
-            throw new InvalidCredentialsException();
+            throw new InvalidCredentialsException;
         }
 
         return ['user' => auth('api')->user(), 'token' => $token];
@@ -82,7 +98,7 @@ class AuthService
     /**
      * Issue a fresh token for the current authenticated session.
      *
-     * @return array{user: User, token: string}  The current user and new JWT.
+     * @return array{user: User, token: string} The current user and new JWT.
      */
     public function refresh(): array
     {
@@ -93,8 +109,6 @@ class AuthService
 
     /**
      * Resolve the currently authenticated user.
-     *
-     * @return User
      */
     public function me(): User
     {

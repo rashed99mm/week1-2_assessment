@@ -1,0 +1,45 @@
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.page-head h1 { margin: 0 0 0.2rem; font-size: 1.35rem; }
+.page-head p { margin: 0; color: var(--muted); font-size: 0.88rem; }
+
+.filters {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.filters input, .filters select {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.88rem;
+  min-width: 12rem;
+}
+
+button {
+  padding: 0.42rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+button:hover { background: var(--surface); }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.danger { color: #dc2626; border-color: color-mix(in srgb, #dc2626 40%, var(--border)); }
+button.danger:hover { background: color-mix(in srgb, #dc2626 12%, transparent); }

@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 #
+# Deliberately not `set -e`. The suite exercises 4xx paths on purpose, and a
+# curl returning a body with a non-2xx status must not abort the run.
+set -uo pipefail
+#
 # =====================================================================
 #  Test Cases (curl) — week1-2_assessment  [bash / Linux / CI]
 # =====================================================================
@@ -27,23 +31,84 @@
 #    declined  -> anything else
 # =====================================================================
 
-API="http://127.0.0.1:8000/api"
-GW="http://127.0.0.1:8001/api/v1"
+# Targets the versioned API. Override to point at a deployed environment:
+#   API_BASE=http://localhost/api/v1 ./test-cases.sh
+API="${API_BASE:-http://127.0.0.1:8000/api/v1}"
+
+# The gateway is not routed through nginx in a deployment — it is reachable
+# only from the API container — so section 5 is skipped unless GATEWAY_BASE
+# points somewhere it can be reached from.
+GW="${GATEWAY_BASE:-http://127.0.0.1:8001/api/v1}"
 TOKEN=""
 
 say()  { printf "\n\033[1;36m### %s\033[0m\n" "$*"; }
 hr()   { printf "\033[1;34m%s\033[0m\n" "--------------------------------------------------------------------"; }
 
+# Every case label already states its expected status — "(expect 409)". Rather
+# than editing forty call sites to repeat it, the value is read back out of the
+# label, so the labels stay the single source of truth.
+PASSED=0
+FAILED=0
+FAILURES=""
+
+# Pull the trailing "HTTP 200" that curl -w appends to the body.
+status_of() { printf '%s' "$1" | grep -oE 'HTTP [0-9]{3}' | tail -1 | grep -oE '[0-9]{3}'; }
+
+# Read the first occurrence of a JSON scalar.
+#
+# Deliberately avoids `grep -oP`: PCRE mode is unavailable in several common
+# environments (Git Bash reports "-P supports only unibyte and UTF-8 locales"),
+# where it silently yields an empty token and every later case fails with 401
+# for no visible reason.
+json_str() { printf '%s' "$1" | grep -o "\"$2\":\"[^\"]*\"" | head -1 | sed "s/.*\"$2\":\"//; s/\"$//"; }
+json_num() { printf '%s' "$1" | grep -oE "\"$2\":[[:space:]]*[0-9]+" | head -1 | grep -oE '[0-9]+'; }
+
+# Run one case with no Authorization header.
+#
+# `VAR=value func` leaks the assignment into the calling shell for functions,
+# unlike external commands, so `TOKEN="" run ...` would clear the token for the
+# whole remainder of the suite.
+no_auth() { local saved="$TOKEN"; TOKEN=""; "$@"; TOKEN="$saved"; }
+
+# Run one case as a specific token, then restore. Same reasoning as no_auth.
+with_token() { local saved="$TOKEN"; TOKEN="$1"; shift; "$@"; TOKEN="$saved"; }
+
+check() {
+  local label="$1" actual="$2" expected
+  expected=$(printf '%s' "$label" | grep -oE 'expect [0-9]{3}' | grep -oE '[0-9]{3}' | head -1)
+
+  # A label with no stated expectation is informational; nothing to assert.
+  [ -z "$expected" ] && return 0
+
+  if [ "$actual" = "$expected" ]; then
+    PASSED=$((PASSED + 1))
+    printf "\033[1;32m  PASS\033[0m (%s)\n" "$actual"
+  else
+    FAILED=$((FAILED + 1))
+    FAILURES="${FAILURES}
+  - ${label}
+      expected ${expected}, got ${actual}"
+    printf "\033[1;31m  FAIL\033[0m expected %s, got %s\n" "$expected" "$actual"
+  fi
+}
+
 # Post JSON, print body + status, print "id=..." extraction.
 # The Bearer token is attached automatically when TOKEN is set.
 # Usage: post <label> <url> <json>
 post() {
-  say "$1"
+  # Callers capture this function's stdout to read the new record's id, so
+  # everything human-readable goes to stderr. Printing the body on stdout puts
+  # the whole JSON response into `event_id`, and every URL built from it is
+  # then malformed — which surfaces as a 404 that looks like a missing record
+  # rather than a broken variable.
+  say "$1" >&2
   local hdr=()
   [ -n "$TOKEN" ] && hdr=(-H "Authorization: Bearer $TOKEN")
+  local resp
   resp=$(curl -s -w "\nHTTP %{http_code}" -X POST "$2" "${hdr[@]}" -H "Content-Type: application/json" -d "$3")
-  echo "$resp"
-  echo "$resp" | grep -oP '"id":\s*\K\d+' | head -1
+  echo "$resp" >&2
+  check "$1" "$(status_of "$resp")" >&2
+  json_num "$resp" id
 }
 
 # Generic call without body (GET / DELETE / PUT with body via json()).
@@ -52,11 +117,14 @@ run() {
   say "$1"
   local hdr=()
   [ -n "$TOKEN" ] && hdr=(-H "Authorization: Bearer $TOKEN")
-  if [ -n "$4" ]; then
-    curl -s -w "\nHTTP %{http_code}\n" -X "$2" "$3" "${hdr[@]}" -H "Content-Type: application/json" -d "$4"
+  local resp
+  if [ -n "${4:-}" ]; then
+    resp=$(curl -s -w "\nHTTP %{http_code}" -X "$2" "$3" "${hdr[@]}" -H "Content-Type: application/json" -d "$4")
   else
-    curl -s -w "\nHTTP %{http_code}\n" -X "$2" "$3" "${hdr[@]}"
+    resp=$(curl -s -w "\nHTTP %{http_code}" -X "$2" "$3" "${hdr[@]}")
   fi
+  echo "$resp"
+  check "$1" "$(status_of "$resp")"
 }
 
 hr
@@ -70,45 +138,62 @@ email="curl${stamp}@example.com"
 resp=$(curl -s -X POST "$API/auth/register" -H "Content-Type: application/json" \
   -d "{\"name\":\"Curl User\",\"email\":\"$email\",\"password\":\"Secret123\",\"password_confirmation\":\"Secret123\"}")
 echo "$resp"
-echo "$resp" | grep -oP '"token":"\K[^"]+' | head -1
-TOKEN=$(echo "$resp" | grep -oP '"token":"\K[^"]+' | head -1)
+TOKEN=$(json_str "$resp" token)
 echo ""
 say "0.1 POST /api/auth/register -> create account (expect 201, token)"
 
 run "0.2 POST /api/auth/register -> duplicate email (expect 422)" POST "$API/auth/register" \
   "{\"name\":\"Curl User\",\"email\":\"$email\",\"password\":\"Secret123\",\"password_confirmation\":\"Secret123\"}"
 run "0.3 GET /api/auth/me -> with token (expect 200)" GET "$API/auth/me"
-TOKEN="" run "0.4 GET /api/auth/me -> no token (expect 401)" GET "$API/auth/me"
-TOKEN="" run "0.5 GET /api/events -> no token (expect 401, protected route)" GET "$API/events"
-TOKEN="" run "0.6 POST /api/auth/login -> wrong password (expect 401)" POST "$API/auth/login" \
+no_auth run "0.4 GET /api/auth/me -> no token (expect 401)" GET "$API/auth/me"
+no_auth run "0.5 GET /api/events -> no token (expect 200, public browsing)" GET "$API/events"
+no_auth run "0.6 POST /api/auth/login -> wrong password (expect 401)" POST "$API/auth/login" \
   "{\"email\":\"$email\",\"password\":\"WrongPass\"}"
 
 resp=$(curl -s -X POST "$API/auth/login" -H "Content-Type: application/json" \
   -d "{\"email\":\"$email\",\"password\":\"Secret123\"}")
 echo "$resp"
-echo "$resp" | grep -oP '"token":"\K[^"]+' | head -1
-TOKEN=$(echo "$resp" | grep -oP '"token":"\K[^"]+' | head -1)
+TOKEN=$(json_str "$resp" token)
 echo ""
 say "0.7 POST /api/auth/login -> valid credentials (expect 200, token)"
 
 resp=$(curl -s -X POST "$API/auth/refresh" -H "Authorization: Bearer $TOKEN")
 echo "$resp"
-echo "$resp" | grep -oP '"token":"\K[^"]+' | head -1
-TOKEN=$(echo "$resp" | grep -oP '"token":"\K[^"]+' | head -1)
+TOKEN=$(json_str "$resp" token)
 echo ""
 say "0.8 POST /api/auth/refresh -> issue fresh token (expect 200)"
 
 old_token="$TOKEN"
 run "0.9 POST /api/auth/logout -> blacklist current token (expect 200)" POST "$API/auth/logout"
-TOKEN="$old_token" run "0.10 GET /api/auth/me -> blacklisted token (expect 401)" GET "$API/auth/me"
+with_token "$old_token" run "0.10 GET /api/auth/me -> blacklisted token (expect 401)" GET "$API/auth/me"
 
 resp=$(curl -s -X POST "$API/auth/login" -H "Content-Type: application/json" \
   -d "{\"email\":\"$email\",\"password\":\"Secret123\"}")
 echo "$resp"
-echo "$resp" | grep -oP '"token":"\K[^"]+' | head -1
-TOKEN=$(echo "$resp" | grep -oP '"token":"\K[^"]+' | head -1)
+TOKEN=$(json_str "$resp" token)
 echo ""
 say "0.11 POST /api/auth/login -> re-login after logout (expect 200)"
+
+CUSTOMER_TOKEN="$TOKEN"
+
+# The catalogue is administrator-only now, so the suite needs two identities:
+# the fresh customer above for the buying flow, and the seeded administrator
+# for creating and deleting events and ticket types.
+admin_resp=$(curl -s -X POST "$API/auth/login" -H "Content-Type: application/json"   -d '{"email":"admin@example.com","password":"password"}')
+ADMIN_TOKEN=$(json_str "$admin_resp" token)
+
+if [ -z "$ADMIN_TOKEN" ]; then
+  printf "[1;31mCannot sign in as admin@example.com. Run: php artisan migrate --seed[0m
+"
+  exit 1
+fi
+
+# The privilege boundary itself is worth a case: a customer must not be able to
+# edit the catalogue.
+run "0.11b POST /api/events -> as a customer (expect 403, admin only)" POST "$API/events"   '{"title":"Should Not Exist","starts_at":"2026-10-01T18:00:00","total_tickets":10,"status":"draft"}'
+
+# Everything from here to section 3 is editorial work.
+TOKEN="$ADMIN_TOKEN"
 
 # ---------------------------------------------------------------------
 # SETUP : create a fresh event + ticket type (used by every section)
@@ -143,8 +228,10 @@ run "2.4 PUT /api/ticket-types/$ticket_id -> partial update price (expect 200)" 
   '{"price":55.00}'
 
 # ---------------------------------------------------------------------
-# 3. ORDERS  (Laravel)
+# 3. ORDERS  (Laravel)  - back to the customer: buying is not an admin action
 # ---------------------------------------------------------------------
+TOKEN="$CUSTOMER_TOKEN"
+
 order1_id=$(post "3.1 POST /api/orders -> create order #1 (expect 201, pending)" "$API/orders" \
   "{\"ticket_type_id\":$ticket_id,\"customer_name\":\"Jane Doe\",\"customer_email\":\"jane@example.com\",\"quantity\":2}")
 order2_id=$(post "3.2 POST /api/orders -> create order #2 for decline flow (expect 201)" "$API/orders" \
@@ -191,10 +278,19 @@ run "5.9 POST /api/v1/payments/$pay_declined_id/refund -> refund a failed paymen
   '{}'
 
 # ---------------------------------------------------------------------
-# 6. REFERENTIAL INTEGRITY  (Laravel)
+# 6. REFERENTIAL INTEGRITY  (Laravel)  - editorial, so back to the admin
 # ---------------------------------------------------------------------
+TOKEN="$ADMIN_TOKEN"
+
 run "6.1 DELETE /api/ticket-types/$ticket_id -> ticket type has orders (expect 409)" DELETE "$API/ticket-types/$ticket_id"
 run "6.2 DELETE /api/events/$event_id -> soft delete event (expect 200)" DELETE "$API/events/$event_id"
 
 hr
-printf "\033[1;32mAll curl test cases executed.\033[0m\n"
+printf "\033[1mSummary:\033[0m \033[1;32m%s passed\033[0m, \033[1;31m%s failed\033[0m\n" "$PASSED" "$FAILED"
+
+if [ "$FAILED" -gt 0 ]; then
+  printf "\033[1;31mFailures:\033[0m%s\n" "$FAILURES"
+  exit 1
+fi
+
+printf "\033[1;32mAll curl test cases passed.\033[0m\n"

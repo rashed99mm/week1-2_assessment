@@ -14,8 +14,8 @@ use Tests\TestCase;
  */
 class EventApiTest extends TestCase
 {
-    use RefreshDatabase;
     use AuthenticatesApi;
+    use RefreshDatabase;
 
     /**
      * Authenticate every request against the JWT guard.

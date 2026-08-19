@@ -2,6 +2,9 @@
 
 namespace App\Repositories\Contracts;
 
+use App\Models\TicketType;
+use Illuminate\Database\Eloquent\Collection;
+
 /**
  * Contract for persisting and retrieving TicketType records.
  */
@@ -10,28 +13,28 @@ interface TicketTypeRepositoryInterface
     /**
      * List ticket types, optionally filtered by event id.
      *
-     * @return \Illuminate\Database\Eloquent\Collection<int, \App\Models\TicketType>
+     * @return Collection<int, TicketType>
      */
     public function all($eventId = null);
 
     /**
      * Find a single ticket type or fail.
      *
-     * @return \App\Models\TicketType
+     * @return TicketType
      */
     public function find($id);
 
     /**
      * Create a new ticket type.
      *
-     * @return \App\Models\TicketType
+     * @return TicketType
      */
     public function create(array $data);
 
     /**
      * Update an existing ticket type.
      *
-     * @return \App\Models\TicketType
+     * @return TicketType
      */
     public function update($id, array $data);
 

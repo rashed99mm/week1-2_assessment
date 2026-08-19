@@ -4,6 +4,7 @@ namespace App\Repositories\Eloquent;
 
 use App\Models\TicketType;
 use App\Repositories\Contracts\TicketTypeRepositoryInterface;
+use Illuminate\Database\Eloquent\Collection;
 
 /**
  * Eloquent implementation of the TicketType repository contract.
@@ -13,7 +14,7 @@ class TicketTypeRepository implements TicketTypeRepositoryInterface
     /**
      * List ticket types, optionally filtered by event id.
      *
-     * @return \Illuminate\Database\Eloquent\Collection<int, \App\Models\TicketType>
+     * @return Collection<int, TicketType>
      */
     public function all($eventId = null)
     {
@@ -29,7 +30,7 @@ class TicketTypeRepository implements TicketTypeRepositoryInterface
     /**
      * Find a single ticket type or throw a ModelNotFoundException.
      *
-     * @return \App\Models\TicketType
+     * @return TicketType
      */
     public function find($id)
     {
@@ -39,7 +40,7 @@ class TicketTypeRepository implements TicketTypeRepositoryInterface
     /**
      * Create a new ticket type.
      *
-     * @return \App\Models\TicketType
+     * @return TicketType
      */
     public function create(array $data)
     {
@@ -49,7 +50,7 @@ class TicketTypeRepository implements TicketTypeRepositoryInterface
     /**
      * Update an existing ticket type.
      *
-     * @return \App\Models\TicketType
+     * @return TicketType
      */
     public function update($id, array $data)
     {

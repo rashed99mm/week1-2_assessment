@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    The PostgreSQL test lane.
+
+    `phpunit.xml` runs the same suites against sqlite :memory: in about a
+    second, which is what you want on every save. That speed comes at a cost:
+    SQLite ignores `lockForUpdate()` entirely, has no unsigned integers, and
+    compares LIKE case-insensitively. Anything that depends on those behaving
+    like production is untestable there.
+
+    This lane runs the identical suites against the real engine, plus the
+    `concurrency` group, which `TestCase::requiresRealLocking()` skips under
+    SQLite. It is slower and needs a live server, so it runs in CI and before a
+    release rather than on every save.
+
+        php artisan test -c phpunit.pgsql.xml
+
+    Expects a reachable PostgreSQL with an empty database named by DB_DATABASE.
+    `docker compose up -d postgres` provides one.
+
+    Note: XML comments cannot contain a double hyphen, so command examples
+    using long flags are omitted here. See docs/contracts/README.md.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+>
+    <testsuites>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Feature">
+            <directory>tests/Feature</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>app</directory>
+        </include>
+    </source>
+    <php>
+        <env name="APP_ENV" value="testing"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
+        <env name="BCRYPT_ROUNDS" value="4"/>
+        <env name="BROADCAST_CONNECTION" value="null"/>
+        <env name="CACHE_STORE" value="array"/>
+
+        <env name="DB_CONNECTION" value="pgsql"/>
+        <env name="DB_HOST" value="127.0.0.1"/>
+        <!--
+            PHPUnit does not overwrite a variable that is already set in the
+            environment, so exporting DB_HOST/DB_PORT before the run points
+            this lane at a server on a different port without editing the file.
+        -->
+        <env name="DB_PORT" value="5432"/>
+        <env name="DB_DATABASE" value="tickets_testing"/>
+        <env name="DB_USERNAME" value="tickets"/>
+        <env name="DB_PASSWORD" value="secret"/>
+        <env name="DB_URL" value=""/>
+
+        <env name="MAIL_MAILER" value="array"/>
+        <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="SESSION_DRIVER" value="array"/>
+
+        <!-- No broker in the test lane; events land in the outbox and stay there. -->
+        <env name="BROKER_ENABLED" value="false"/>
+
+        <env name="PULSE_ENABLED" value="false"/>
+        <env name="TELESCOPE_ENABLED" value="false"/>
+        <env name="NIGHTWATCH_ENABLED" value="false"/>
+    </php>
+</phpunit>

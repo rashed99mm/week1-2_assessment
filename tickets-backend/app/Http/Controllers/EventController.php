@@ -7,8 +7,8 @@ use App\Http\Requests\UpdateEventRequest;
 use App\Http\Responses\ApiResponse;
 use App\Services\EventService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Throwable;
 
 /**
@@ -36,10 +36,19 @@ class EventController extends Controller
      */
     public function index(Request $request)
     {
+        // Query parameters are attacker-controlled and arbitrarily shaped:
+        // `?filters=foo` yields a string and `?sort_by[]=x` an array, either
+        // of which would be a TypeError against the repository's signature.
+        // Normalise here; the repository then drops any value not on its
+        // filter and sort allow-lists.
+        $filters = $request->input('filters', []);
+        $sortBy = $request->input('sort_by', 'created_at');
+        $sortOrder = $request->input('sort_order', 'desc');
+
         $events = $this->service->index(
-            $request->input('filters', []),
-            $request->input('sort_by', 'created_at'),
-            $request->input('sort_order', 'desc'),
+            is_array($filters) ? $filters : [],
+            is_string($sortBy) ? $sortBy : 'created_at',
+            is_string($sortOrder) ? $sortOrder : 'desc',
             $request->integer('per_page', 15)
         );
 

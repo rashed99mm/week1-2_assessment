@@ -1,0 +1,49 @@
+{{!--
+  Shared shell for every transactional email.
+
+  Written in MJML rather than hand-rolled table HTML because the alternative is
+  maintaining nested tables that survive Outlook, which is not a good use of
+  the budget. Compiled to HTML at build time — see scripts/build-templates.ts —
+  so nothing pays MJML's compile cost per send.
+
+  Handlebars expressions pass through the MJML compiler untouched.
+--}}
+<mjml>
+  <mj-head>
+    <mj-title>{{subject}}</mj-title>
+    <mj-preview>{{preview}}</mj-preview>
+    <mj-attributes>
+      <mj-all font-family="Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="1.6" color="#1f2933" />
+      <mj-section padding="0" />
+    </mj-attributes>
+    <mj-style>
+      .muted { color: #7b8794; font-size: 13px; }
+      .total { font-size: 20px; font-weight: 700; }
+    </mj-style>
+  </mj-head>
+
+  <mj-body background-color="#f4f6f8">
+    <mj-section padding="24px 0 8px">
+      <mj-column>
+        <mj-text align="center" font-size="20px" font-weight="700" color="#1f2933">
+          Tickets
+        </mj-text>
+      </mj-column>
+    </mj-section>
+
+    <mj-section background-color="#ffffff" border-radius="8px" padding="28px 24px">
+      <mj-column>
+        {{> content}}
+      </mj-column>
+    </mj-section>
+
+    <mj-section padding="16px 0 28px">
+      <mj-column>
+        <mj-text align="center" css-class="muted">
+          This is an automated message about your order. Replies are not monitored.
+        </mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

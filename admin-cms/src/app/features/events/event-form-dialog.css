@@ -1,0 +1,94 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  background: rgb(0 0 0 / 0.45);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.dialog {
+  width: min(38rem, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 16px 44px rgb(0 0 0 / 0.32);
+  max-height: calc(100vh - 2rem);
+  display: flex;
+  flex-direction: column;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+header h2 { margin: 0; font-size: 1.05rem; }
+
+header button {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+form { padding: 1.25rem; overflow-y: auto; }
+
+label { display: block; margin-bottom: 0.9rem; font-size: 0.85rem; }
+label > span { display: block; margin-bottom: 0.3rem; color: var(--muted); }
+
+label.inline { display: flex; align-items: center; gap: 0.5rem; }
+label.inline > span { margin: 0; color: var(--text); }
+
+input, select, textarea {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+
+label.inline input { width: auto; }
+
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 0.9rem; }
+@media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+
+.cover small { display: block; margin-top: 0.3rem; color: var(--muted); font-size: 0.78rem; }
+
+.field-error {
+  margin: -0.4rem 0 0.9rem;
+  color: #dc2626;
+  font-size: 0.82rem;
+}
+
+footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  margin-top: 0.5rem;
+  padding-top: 1rem;
+}
+
+footer button {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.88rem;
+}
+
+footer button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }

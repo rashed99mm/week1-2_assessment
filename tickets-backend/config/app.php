@@ -43,6 +43,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Legacy unversioned API mount
+    |--------------------------------------------------------------------------
+    |
+    | Serves the /api/v1 routes a second time under a bare /api prefix, with
+    | deprecation headers attached, so the React portal keeps working while it
+    | is migrated. Set to false once nothing calls the unversioned paths — the
+    | Angular CMS targets /api/v1 from the start.
+    |
+    */
+
+    'legacy_api_enabled' => (bool) env('LEGACY_API_ENABLED', true),
+
+    'legacy_api_sunset' => env('LEGACY_API_SUNSET', '2027-01-01'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application URL
     |--------------------------------------------------------------------------
     |

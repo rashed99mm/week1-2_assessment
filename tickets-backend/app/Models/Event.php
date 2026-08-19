@@ -4,7 +4,10 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 /**
  * Eloquent model representing an event that sells tickets.
@@ -15,8 +18,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $venue
  * @property string|null $cover_image_path Path on the `public` disk, e.g. "covers/ab12….jpg".
  * @property-read string|null $cover_image_url Absolute, browser-usable URL, or null when unset.
- * @property \Illuminate\Support\Carbon $starts_at
- * @property \Illuminate\Support\Carbon|null $ends_at
+ * @property Carbon $starts_at
+ * @property Carbon|null $ends_at
  * @property int $total_tickets
  * @property string $status
  */
@@ -62,7 +65,7 @@ class Event extends Model
     /**
      * The type / category this event belongs to.
      *
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo<EventType>
+     * @return BelongsTo<EventType>
      */
     public function eventType()
     {
@@ -72,7 +75,7 @@ class Event extends Model
     /**
      * Ticket types available for this event.
      *
-     * @return \Illuminate\Database\Eloquent\Relations\HasMany<TicketType>
+     * @return HasMany<TicketType>
      */
     public function ticketTypes()
     {
@@ -82,7 +85,7 @@ class Event extends Model
     /**
      * Orders placed against this event.
      *
-     * @return \Illuminate\Database\Eloquent\Relations\HasMany<Order>
+     * @return HasMany<Order>
      */
     public function orders()
     {

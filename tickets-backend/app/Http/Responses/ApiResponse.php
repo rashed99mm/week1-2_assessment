@@ -19,7 +19,6 @@ class ApiResponse
      * @param  T  $data  The payload to wrap.
      * @param  string  $message  Human readable success message.
      * @param  int  $status  HTTP status code.
-     * @return JsonResponse
      */
     public static function success(mixed $data, string $message = 'Success', int $status = 200): JsonResponse
     {
@@ -38,7 +37,6 @@ class ApiResponse
      * @param  string  $message  Human readable error message.
      * @param  mixed  $errors  Optional validation / debug details.
      * @param  int  $status  HTTP status code.
-     * @return JsonResponse
      */
     public static function error(string $message, mixed $errors = null, int $status = 400): JsonResponse
     {

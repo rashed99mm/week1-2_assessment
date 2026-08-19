@@ -20,11 +20,14 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        User::create([
-            'name' => 'Demo Admin',
-            'email' => 'admin@example.com',
-            'password' => 'password',
-        ]);
+        // Seeding must be safe to re-run. On SQLite a duplicate insert into a
+        // unique column was tolerated in practice; on PostgreSQL it raises a
+        // unique violation and aborts the whole seed, so the rows guarded by a
+        // unique index use firstOrCreate.
+        User::firstOrCreate(
+            ['email' => 'admin@example.com'],
+            ['name' => 'Demo Admin', 'password' => 'password'],
+        );
 
         $types = collect([
             ['name' => 'Concert', 'slug' => 'concert', 'is_online' => false, 'seating_model' => 'assigned'],
@@ -36,8 +39,17 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Webinar', 'slug' => 'webinar', 'is_online' => true, 'seating_model' => 'general'],
             ['name' => 'Meetup', 'slug' => 'meetup', 'is_online' => false, 'seating_model' => 'general'],
         ])->each(function (array $type): void {
-            EventType::create($type);
+            EventType::firstOrCreate(['slug' => $type['slug']], $type);
         });
+
+        // The event catalogue has no unique key to upsert against, so re-running
+        // the seeder would silently duplicate all 18 events and their ticket
+        // types. Stop here instead; `migrate:fresh --seed` is the way to rebuild.
+        if (Event::query()->exists()) {
+            $this->command?->info('Events already present — skipping catalogue seed.');
+
+            return;
+        }
 
         $concert = EventType::where('slug', 'concert')->first();
         $conference = EventType::where('slug', 'conference')->first();

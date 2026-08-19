@@ -25,7 +25,9 @@
 # =====================================================================
 
 $ErrorActionPreference = 'Continue'
-$API = "http://127.0.0.1:8000/api"
+# Targets the versioned API. Override to point at a deployed environment:
+#   $env:API_BASE = "http://localhost/api/v1"; .\test-cases.ps1
+$API = if ($env:API_BASE) { $env:API_BASE } else { "http://127.0.0.1:8000/api/v1" }
 $GW  = "http://127.0.0.1:8001/api/v1"
 
 # JWT captured during the AUTH section and attached to every protected call.

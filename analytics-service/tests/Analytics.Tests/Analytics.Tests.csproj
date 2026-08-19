@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>Analytics.Tests</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="FluentAssertions" Version="6.12.2" />
+
+    <!-- A real mongod, run as a child process.
+
+         The aggregation pipelines *are* the product here: a substitute that
+         only approximated $dateTrunc or $lookup would let a test pass while
+         the dashboard was wrong. EphemeralMongo runs the genuine server
+         binary, so the pipelines are executed by the same engine production
+         uses.
+
+         Chosen over Testcontainers because it needs no Docker daemon — the
+         tests run anywhere the SDK does, including a developer machine with
+         Docker stopped. -->
+    <PackageReference Include="EphemeralMongo" Version="3.2.0" />
+
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.0" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Analytics.Api\Analytics.Api.csproj" />
+  </ItemGroup>
+
+</Project>

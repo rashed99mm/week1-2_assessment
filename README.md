@@ -7,7 +7,7 @@ check out through a mock payment gateway.
 ```
                       ┌────────────────────────────────────────────┐
   Browser ───────────►│           frontend (React 19 + Vite)        │
-                      │  seat maps · 3D venue · checkout · admin    │
+                      │  seat maps · 3D venue · checkout            │
                       └───────────────────────┬────────────────────┘
                                               │  /api  (JWT Bearer)
                                               ▼
@@ -114,7 +114,6 @@ npm run dev
 | `/events/:id/seats` | public | Seat map, 3D venue, first-person seat view |
 | `/checkout` | auth | Two-step order and payment |
 | `/orders`, `/orders/:id` | auth | Order history |
-| `/admin/events`, `/admin/ticket-types` | auth | CRUD, including cover uploads |
 | `/login`, `/register` | guests only | JWT auth |
 
 Admin routes are authentication-gated only. There is no role column on `users`,

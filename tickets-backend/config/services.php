@@ -37,6 +37,10 @@ return [
 
     'payment_gateway' => [
         'url' => env('PAYMENT_GATEWAY_URL', 'http://127.0.0.1:8001'),
+        // Shared secret sent as X-Gateway-Key. Unset locally, required in any
+        // deployment: the gateway mints payment records, so reaching it should
+        // take more than being on the same network.
+        'key' => env('PAYMENT_GATEWAY_KEY'),
     ],
 
 ];

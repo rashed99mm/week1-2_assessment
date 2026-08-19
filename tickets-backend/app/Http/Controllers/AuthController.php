@@ -30,7 +30,7 @@ class AuthController extends Controller
      * Register a new user account and return a signed token.
      *
      * @param  RegisterRequest  $request  Validated register payload.
-     * @return JsonResponse  User + JWT, HTTP 201.
+     * @return JsonResponse User + JWT, HTTP 201.
      */
     public function register(RegisterRequest $request): JsonResponse
     {
@@ -43,7 +43,7 @@ class AuthController extends Controller
      * Authenticate an existing user and return a signed token.
      *
      * @param  LoginRequest  $request  Validated login payload.
-     * @return JsonResponse  User + JWT, HTTP 200.
+     * @return JsonResponse User + JWT, HTTP 200.
      */
     public function login(LoginRequest $request): JsonResponse
     {
@@ -59,7 +59,7 @@ class AuthController extends Controller
     /**
      * Invalidate the current token.
      *
-     * @return JsonResponse  HTTP 200.
+     * @return JsonResponse HTTP 200.
      */
     public function logout(): JsonResponse
     {
@@ -71,7 +71,7 @@ class AuthController extends Controller
     /**
      * Issue a fresh token for the current session.
      *
-     * @return JsonResponse  User + new JWT, HTTP 200.
+     * @return JsonResponse User + new JWT, HTTP 200.
      */
     public function refresh(): JsonResponse
     {
@@ -83,7 +83,7 @@ class AuthController extends Controller
     /**
      * Return the currently authenticated user.
      *
-     * @return JsonResponse  Authenticated user, HTTP 200.
+     * @return JsonResponse Authenticated user, HTTP 200.
      */
     public function me(): JsonResponse
     {

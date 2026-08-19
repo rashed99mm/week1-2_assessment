@@ -14,7 +14,7 @@ class UserRepository implements UserRepositoryInterface
      * Create a new user.
      *
      * @param  array<string, mixed>  $data  Validated user attributes.
-     * @return \App\Models\User
+     * @return User
      */
     public function create(array $data)
     {
@@ -25,7 +25,7 @@ class UserRepository implements UserRepositoryInterface
      * Find a user by email address.
      *
      * @param  string  $email  Email address (compared case-insensitively).
-     * @return \App\Models\User|null
+     * @return User|null
      */
     public function findByEmail(string $email)
     {
@@ -36,7 +36,7 @@ class UserRepository implements UserRepositoryInterface
      * Find a user by primary key, or throw a ModelNotFoundException.
      *
      * @param  mixed  $id  User primary key.
-     * @return \App\Models\User
+     * @return User
      */
     public function find($id)
     {

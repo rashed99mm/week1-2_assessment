@@ -11,10 +11,15 @@ class UpdateEventRequest extends FormRequest
 {
     /**
      * Determine if the user is authorised to make this request.
+     *
+     * The route already carries the `admin` middleware, so this is a second
+     * lock on the same door: it keeps the rule attached to the request object
+     * itself, so moving this route out of the admin group by accident fails
+     * closed instead of silently opening the endpoint to every account.
      */
     public function authorize(): bool
     {
-        return true;
+        return $this->user()?->isAdmin() ?? false;
     }
 
     /**

@@ -95,7 +95,34 @@ return [
             'charset' => env('DB_CHARSET', 'utf8'),
             'prefix' => '',
             'prefix_indexes' => true,
-            'search_path' => 'public',
+            'search_path' => env('DB_SCHEMA', 'public'),
+            'sslmode' => env('DB_SSLMODE', 'prefer'),
+        ],
+
+        /*
+         * A second physical connection to the same PostgreSQL database.
+         *
+         * Row locking can only be observed from outside the transaction that
+         * holds the lock. Laravel reuses one PDO handle per connection name, so
+         * a test that opens a transaction on `pgsql` and then queries `pgsql`
+         * again is still inside its own transaction and sees no lock at all.
+         * Tests that need to prove `lockForUpdate()` actually blocks a
+         * concurrent writer query this connection instead.
+         *
+         * Test-only. Nothing in `app/` should reference it.
+         */
+        'pgsql_second' => [
+            'driver' => 'pgsql',
+            'url' => env('DB_URL'),
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', '5432'),
+            'database' => env('DB_DATABASE', 'laravel'),
+            'username' => env('DB_USERNAME', 'root'),
+            'password' => env('DB_PASSWORD', ''),
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => env('DB_SCHEMA', 'public'),
             'sslmode' => env('DB_SSLMODE', 'prefer'),
         ],
 

@@ -2,14 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\ResourceInUseException;
 use App\Http\Requests\StoreTicketTypeRequest;
 use App\Http\Requests\UpdateTicketTypeRequest;
 use App\Http\Responses\ApiResponse;
 use App\Services\TicketTypeService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 /**
  * Handles HTTP requests for the TicketType resource.
@@ -103,7 +104,11 @@ class TicketTypeController extends Controller
             return ApiResponse::success(null, 'Ticket type deleted successfully.');
         } catch (ModelNotFoundException $e) {
             return ApiResponse::error('Ticket type not found.', null, 404);
+        } catch (ResourceInUseException $e) {
+            return ApiResponse::error($e->getMessage(), null, 409);
         } catch (QueryException $e) {
+            // Backstop for the race where an order is placed between the
+            // service's dependency check and the delete.
             return ApiResponse::error('Cannot delete ticket type because it has associated orders.', null, 409);
         }
     }

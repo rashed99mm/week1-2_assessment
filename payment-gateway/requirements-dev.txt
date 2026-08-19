@@ -1,3 +1,6 @@
-# Development / test dependencies
-pytest>=8.0
-httpx>=0.27
+# Development / test dependencies. Install with:
+#   pip install -r requirements.txt -r requirements-dev.txt
+# Pinned for the same reason as requirements.txt.
+
+pytest==9.1.1
+httpx==0.28.1

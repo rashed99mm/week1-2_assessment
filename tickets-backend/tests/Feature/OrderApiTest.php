@@ -15,8 +15,8 @@ use Tests\TestCase;
  */
 class OrderApiTest extends TestCase
 {
-    use RefreshDatabase;
     use AuthenticatesApi;
+    use RefreshDatabase;
 
     /**
      * Authenticate every request against the JWT guard.
@@ -123,10 +123,12 @@ class OrderApiTest extends TestCase
             'status' => 'pending',
         ]);
 
+        // The listing is paginated now, so the items live under `data.data`.
         $this->getJson('/api/orders')
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonCount(1, 'data');
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonCount(1, 'data.data');
     }
 
     /**

@@ -29,6 +29,20 @@ function toBody(data: unknown): BodyInit | undefined {
   return JSON.stringify(data)
 }
 
+/**
+ * Point a call at the versioned API.
+ *
+ * Call sites still read `/api/events`, which is the unversioned compatibility
+ * mount Laravel serves with a Deprecation header. Rewriting here rather than
+ * editing every call site keeps the change to one place — and lets the backend
+ * switch that mount off, which is the point.
+ */
+function toVersionedPath(path: string): string {
+  return path.startsWith('/api/') && !path.startsWith('/api/v1/')
+    ? path.replace('/api/', '/api/v1/')
+    : path
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken()
   const headers = new Headers(options.headers)
@@ -42,7 +56,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers.set('Authorization', `Bearer ${token}`)
   }
 
-  const response = await fetch(path, { ...options, headers })
+  const response = await fetch(toVersionedPath(path), { ...options, headers })
 
   let body: ApiResponse<T> | null = null
   try {

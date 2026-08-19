@@ -2,6 +2,9 @@ export interface User {
   id: number
   name: string
   email: string
+  /** 'user' | 'admin'. Decides only whether the CMS link is offered — every
+      permission is enforced by the API. */
+  role: 'user' | 'admin'
 }
 
 export interface EventType {
@@ -70,7 +73,7 @@ export interface Payment {
   created_at?: string
 }
 
-export type OrderStatus = 'pending' | 'paid' | 'failed'
+export type OrderStatus = 'pending' | 'paid' | 'failed' | 'refunded' | 'cancelled'
 
 export interface Order {
   id: number

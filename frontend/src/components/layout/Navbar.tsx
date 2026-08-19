@@ -11,8 +11,13 @@ const publicNavItems = [
 
 const userNavItems = [
   { to: '/orders', label: 'Orders', end: false },
-  { to: '/admin/events', label: 'Admin', end: false },
 ]
+
+// The admin surface is a separate Angular application, served by nginx at
+// /admin/ on this same origin. A plain anchor, not a router Link: this app
+// does not own those routes any more, and a client-side navigation would just
+// hit the catch-all redirect.
+const ADMIN_CMS_URL = '/admin/'
 
 export function Navbar() {
   const { user, logout } = useAuth()
@@ -66,6 +71,14 @@ export function Navbar() {
                 {item.label}
               </NavLink>
             ))}
+          {user?.role === 'admin' && (
+            <a
+              href={ADMIN_CMS_URL}
+              className="rounded-full px-3 py-1.5 text-sm font-medium text-muted transition-colors hover:bg-white/5 hover:text-white"
+            >
+              Admin CMS
+            </a>
+          )}
         </nav>
 
         <div className="flex items-center gap-2">

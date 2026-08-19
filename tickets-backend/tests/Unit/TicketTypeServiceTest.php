@@ -2,8 +2,11 @@
 
 namespace Tests\Unit;
 
+use App\Exceptions\ResourceInUseException;
+use App\Models\TicketType;
 use App\Repositories\Contracts\TicketTypeRepositoryInterface;
 use App\Services\TicketTypeService;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Mockery;
 use PHPUnit\Framework\TestCase;
 
@@ -85,12 +88,47 @@ class TicketTypeServiceTest extends TestCase
     }
 
     /**
-     * Verify delete() forwards the id to the repository.
+     * Verify delete() forwards the id to the repository when nothing depends
+     * on the ticket type.
      */
     public function test_delete_forwards_to_repository(): void
     {
+        $this->repo->shouldReceive('find')->once()->with(4)
+            ->andReturn($this->ticketTypeWithOrders(false));
         $this->repo->shouldReceive('delete')->once()->with(4)->andReturn(true);
 
         $this->assertTrue($this->service->delete(4));
+    }
+
+    /**
+     * Verify delete() refuses when orders reference the ticket type.
+     *
+     * The check has to happen before the delete rather than being left to the
+     * foreign key: on PostgreSQL the constraint violation aborts the whole
+     * transaction, and nothing else can run on that connection afterwards.
+     */
+    public function test_delete_rejects_ticket_type_with_orders(): void
+    {
+        $this->repo->shouldReceive('find')->once()->with(4)
+            ->andReturn($this->ticketTypeWithOrders(true));
+        $this->repo->shouldNotReceive('delete');
+
+        $this->expectException(ResourceInUseException::class);
+
+        $this->service->delete(4);
+    }
+
+    /**
+     * A TicketType double whose orders() relation reports the given existence.
+     */
+    private function ticketTypeWithOrders(bool $hasOrders): TicketType
+    {
+        $relation = Mockery::mock(HasMany::class);
+        $relation->shouldReceive('exists')->andReturn($hasOrders);
+
+        $ticketType = Mockery::mock(TicketType::class)->makePartial();
+        $ticketType->shouldReceive('orders')->andReturn($relation);
+
+        return $ticketType;
     }
 }

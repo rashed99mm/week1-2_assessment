@@ -1,5 +1,8 @@
 <?php
 
+use PHPOpenSourceSaver\JWTAuth\Providers\Auth\Illuminate;
+use PHPOpenSourceSaver\JWTAuth\Providers\JWT\Lcobucci;
+
 return [
     /*
     |--------------------------------------------------------------------------
@@ -167,9 +170,22 @@ return [
     |
     */
 
+    /*
+     * These are the custom claims returned by User::getJWTCustomClaims().
+     *
+     * refresh() rebuilds the payload and keeps only the claims named here.
+     * Leaving this list empty means the token issued by
+     * POST /auth/refresh carries no `role`, so an administrator is silently
+     * downgraded roughly an hour into their session — and only on the
+     * services that authorize from the claim, which makes it look like an
+     * intermittent bug in the CMS rather than a configuration mistake.
+     *
+     * Guarded by AuthApiTest::test_refresh_preserves_custom_claims.
+     */
     'persistent_claims' => [
-        // 'foo',
-        // 'bar',
+        'role',
+        'name',
+        'email',
     ],
 
     /*
@@ -294,7 +310,7 @@ return [
         |
         */
 
-        'jwt' => PHPOpenSourceSaver\JWTAuth\Providers\JWT\Lcobucci::class,
+        'jwt' => Lcobucci::class,
 
         /*
         |--------------------------------------------------------------------------
@@ -305,7 +321,7 @@ return [
         |
         */
 
-        'auth' => PHPOpenSourceSaver\JWTAuth\Providers\Auth\Illuminate::class,
+        'auth' => Illuminate::class,
 
         /*
         |--------------------------------------------------------------------------

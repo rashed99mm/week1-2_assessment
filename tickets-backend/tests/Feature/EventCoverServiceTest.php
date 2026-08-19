@@ -21,7 +21,7 @@ class EventCoverServiceTest extends TestCase
     {
         parent::setUp();
         Storage::fake('public');
-        $this->covers = new EventCoverService();
+        $this->covers = new EventCoverService;
     }
 
     /**

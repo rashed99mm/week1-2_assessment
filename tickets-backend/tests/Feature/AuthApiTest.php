@@ -2,6 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\Event;
+use App\Models\EventType;
+use App\Models\TicketType;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\AuthenticatesApi;
@@ -12,8 +15,8 @@ use Tests\TestCase;
  */
 class AuthApiTest extends TestCase
 {
-    use RefreshDatabase;
     use AuthenticatesApi;
+    use RefreshDatabase;
 
     /**
      * Build a valid register payload.
@@ -145,13 +148,13 @@ class AuthApiTest extends TestCase
      */
     public function test_public_browsing_routes_do_not_require_token(): void
     {
-        $eventType = \App\Models\EventType::create([
+        $eventType = EventType::create([
             'name' => 'Concert',
             'slug' => 'concert',
             'is_online' => false,
             'seating_model' => 'assigned',
         ]);
-        $event = \App\Models\Event::create([
+        $event = Event::create([
             'title' => 'Open Air Night',
             'description' => 'A public browsing test event.',
             'venue' => 'Riverside Park',
@@ -160,7 +163,7 @@ class AuthApiTest extends TestCase
             'total_tickets' => 100,
             'status' => 'published',
         ]);
-        \App\Models\TicketType::create([
+        TicketType::create([
             'event_id' => $event->id,
             'name' => 'General',
             'price' => 25.00,

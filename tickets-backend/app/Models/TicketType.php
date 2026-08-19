@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * Eloquent model representing a purchasable ticket type for an event.
@@ -26,7 +28,7 @@ class TicketType extends Model
     /**
      * The event this ticket type belongs to.
      *
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Event>
+     * @return BelongsTo<Event>
      */
     public function event()
     {
@@ -36,7 +38,7 @@ class TicketType extends Model
     /**
      * Orders created for this ticket type.
      *
-     * @return \Illuminate\Database\Eloquent\Relations\HasMany<Order>
+     * @return HasMany<Order>
      */
     public function orders()
     {

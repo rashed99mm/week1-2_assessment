@@ -9,6 +9,7 @@ use App\Http\Responses\ApiResponse;
 use App\Services\OrderService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use InvalidArgumentException;
 
 /**
@@ -29,13 +30,24 @@ class OrderController extends Controller
     }
 
     /**
-     * List all orders.
+     * List orders visible to the caller.
      *
+     * Scoping to the current user happens in the repository, not here.
+     *
+     * @param  Request  $request  Incoming HTTP request.
      * @return JsonResponse
      */
-    public function index()
+    public function index(Request $request)
     {
-        return ApiResponse::success($this->service->index(), 'Orders fetched successfully.');
+        $filters = $request->input('filters', []);
+
+        return ApiResponse::success(
+            $this->service->index(
+                is_array($filters) ? $filters : [],
+                $request->integer('per_page', 15),
+            ),
+            'Orders fetched successfully.',
+        );
     }
 
     /**
@@ -47,7 +59,16 @@ class OrderController extends Controller
     public function show($id)
     {
         try {
-            return ApiResponse::success($this->service->show($id), 'Order fetched successfully.');
+            $order = $this->service->show($id);
+
+            // 404 rather than 403 for someone else's order: telling an
+            // arbitrary caller that order 5012 exists but is not theirs turns
+            // this endpoint into a way to count the shop's sales.
+            if (auth('api')->user()->cannot('view', $order)) {
+                return ApiResponse::error('Order not found.', null, 404);
+            }
+
+            return ApiResponse::success($order, 'Order fetched successfully.');
         } catch (ModelNotFoundException $e) {
             return ApiResponse::error('Order not found.', null, 404);
         }
@@ -82,6 +103,12 @@ class OrderController extends Controller
     public function pay(PayOrderRequest $request, $id)
     {
         try {
+            // Checked before charging: without it, any authenticated account
+            // could pay down someone else's order by guessing an id.
+            if (auth('api')->user()->cannot('pay', $this->service->show($id))) {
+                return ApiResponse::error('Order not found.', null, 404);
+            }
+
             $payment = $this->service->pay($id, $request->validated());
 
             return ApiResponse::success($payment, 'Payment processed successfully.');

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * Eloquent model representing a category / format of event.
@@ -26,7 +27,7 @@ class EventType extends Model
     /**
      * Events that belong to this type.
      *
-     * @return \Illuminate\Database\Eloquent\Relations\HasMany<Event>
+     * @return HasMany<Event>
      */
     public function events()
     {

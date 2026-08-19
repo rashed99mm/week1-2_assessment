@@ -19,13 +19,6 @@ const columns = [
       { to: '/login', label: 'Sign in' },
     ],
   },
-  {
-    heading: 'Organisers',
-    links: [
-      { to: '/admin/events', label: 'Manage events' },
-      { to: '/admin/ticket-types', label: 'Ticket types' },
-    ],
-  },
 ]
 
 export function Footer() {

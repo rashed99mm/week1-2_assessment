@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use App\Models\Event;
 use App\Models\Order;
 use App\Models\TicketType;
 use App\Repositories\Contracts\EventRepositoryInterface;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 /**
  * Orchestrates business logic for Event resources.
@@ -21,20 +23,20 @@ class EventService
      *
      * @param  EventRepositoryInterface  $repo  Event persistence contract.
      * @param  EventCoverService|null  $covers  Cover-image file lifecycle. Optional
-     *   so the service remains constructible without a container; the framework
-     *   autowires the concrete class in the application.
+     *                                          so the service remains constructible without a container; the framework
+     *                                          autowires the concrete class in the application.
      */
     public function __construct(EventRepositoryInterface $repo, ?EventCoverService $covers = null)
     {
         $this->repo = $repo;
-        $this->covers = $covers ?? new EventCoverService();
+        $this->covers = $covers ?? new EventCoverService;
     }
 
     /**
      * List events with filtering, sorting and pagination.
      *
      * @param  array<string, mixed>  $filters
-     * @return \Illuminate\Pagination\LengthAwarePaginator
+     * @return LengthAwarePaginator
      */
     public function index(array $filters, string $sortBy, string $sortOrder, int $perPage)
     {
@@ -44,7 +46,7 @@ class EventService
     /**
      * Show a single event.
      *
-     * @return \App\Models\Event
+     * @return Event
      */
     public function show($id)
     {
@@ -91,7 +93,7 @@ class EventService
     /**
      * Create a new event, storing an uploaded cover image if one is present.
      *
-     * @return \App\Models\Event
+     * @return Event
      */
     public function create(array $data)
     {
@@ -113,7 +115,7 @@ class EventService
      *
      * A newly uploaded file always wins over the remove_cover flag.
      *
-     * @return \App\Models\Event
+     * @return Event
      */
     public function update($id, array $data)
     {

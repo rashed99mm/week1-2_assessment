@@ -12,7 +12,7 @@ class RegisterRequest extends FormRequest
     /**
      * Determine if the user is authorised to make this request.
      *
-     * @return bool  Always true — registration is a public endpoint.
+     * @return bool Always true — registration is a public endpoint.
      */
     public function authorize(): bool
     {

@@ -12,7 +12,7 @@ class LoginRequest extends FormRequest
     /**
      * Determine if the user is authorised to make this request.
      *
-     * @return bool  Always true — login is a public endpoint.
+     * @return bool Always true — login is a public endpoint.
      */
     public function authorize(): bool
     {

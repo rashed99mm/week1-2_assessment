@@ -1,0 +1,379 @@
+# The whole product, on one host.
+#
+#   cp .env.example .env      # then fill in the secrets
+#   docker compose up -d --wait
+#   open http://localhost/
+#
+# `--wait` blocks until every healthcheck passes, so a green return means the
+# stack is actually serving rather than merely started.
+#
+# Only nginx publishes a port. Postgres, RabbitMQ, Mongo, Redis, Mailpit and
+# the payment gateway are reachable by service name on the internal network and
+# not from the host at all — which is both the security posture and the reason
+# this file does not collide with anything already running on 5432 or 5672.
+
+name: tickets
+
+x-laravel-env: &laravel-env
+  APP_NAME: ${APP_NAME:-Tickets}
+  APP_ENV: production
+  APP_DEBUG: "false"
+  # Quoted because the message contains a colon, which YAML would otherwise
+  # read as a nested mapping.
+  APP_KEY: "${APP_KEY:?APP_KEY is required. Run scripts/generate-secrets.sh}"
+  APP_URL: ${APP_URL:-http://localhost}
+  LOG_CHANNEL: stderr
+  LOG_LEVEL: ${LOG_LEVEL:-warning}
+
+  DB_CONNECTION: pgsql
+  DB_HOST: postgres
+  DB_PORT: 5432
+  DB_DATABASE: ${POSTGRES_DB:-tickets}
+  DB_USERNAME: ${POSTGRES_USER:-tickets}
+  DB_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required. Run scripts/generate-secrets.sh}"
+
+  CACHE_STORE: redis
+  SESSION_DRIVER: redis
+  QUEUE_CONNECTION: database
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+
+  AUTH_GUARD: api
+  JWT_ALGO: RS256
+  JWT_TTL: 60
+  JWT_PRIVATE_KEY: file:///run/secrets/jwt-private.pem
+  JWT_PUBLIC_KEY: file:///run/secrets/jwt-public.pem
+
+  BROKER_ENABLED: "true"
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_PORT: 5672
+  RABBITMQ_USER: ${RABBITMQ_USER:-tickets}
+  RABBITMQ_PASSWORD: "${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required. Run scripts/generate-secrets.sh}"
+  RABBITMQ_EXCHANGE: tickets.events
+
+  PAYMENT_GATEWAY_URL: http://payments:8001
+  PAYMENT_GATEWAY_KEY: "${GATEWAY_API_KEY:?GATEWAY_API_KEY is required. Run scripts/generate-secrets.sh}"
+
+  MAIL_MAILER: smtp
+  MAIL_HOST: mailpit
+  MAIL_PORT: 1025
+  MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-tickets@example.com}
+
+  TICKETS_RESERVATION_MINUTES: ${TICKETS_RESERVATION_MINUTES:-15}
+  # Switched off once the Angular CMS has replaced the React admin pages.
+  LEGACY_API_ENABLED: ${LEGACY_API_ENABLED:-false}
+
+x-laravel-build: &laravel-build
+  build:
+    context: ./tickets-backend
+    dockerfile: Dockerfile
+  image: tickets/api:latest
+  restart: unless-stopped
+  networks: [tickets]
+  volumes:
+    - laravel-storage:/var/www/html/storage
+  secrets:
+    - jwt-private.pem
+    - jwt-public.pem
+
+services:
+  # -----------------------------------------------------------------------
+  # Edge
+  # -----------------------------------------------------------------------
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    networks: [tickets]
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/nginx/conf.d:/etc/nginx/conf.d:ro
+      - laravel-storage:/var/www/storage:ro
+      - portal-dist:/srv/portal:ro
+      - cms-dist:/srv/cms:ro
+    depends_on:
+      api: { condition: service_healthy }
+      notifications: { condition: service_healthy }
+      analytics: { condition: service_healthy }
+      portal-build: { condition: service_completed_successfully }
+      cms-build: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # -----------------------------------------------------------------------
+  # Laravel: API, migrations, queue worker, scheduler
+  # -----------------------------------------------------------------------
+
+  # A one-shot service rather than an entrypoint step. api, queue and
+  # scheduler share an image and start together; if each ran migrations they
+  # would race the migrations table.
+  migrate:
+    <<: *laravel-build
+    restart: "no"
+    environment:
+      <<: *laravel-env
+    command: >
+      sh -c "php artisan migrate --force && php artisan storage:link --force || true"
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    <<: *laravel-build
+    environment:
+      <<: *laravel-env
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+
+  queue:
+    <<: *laravel-build
+    environment:
+      <<: *laravel-env
+    # --max-time recycles the worker hourly so a slow memory leak cannot
+    # accumulate across a long-running process.
+    command: php artisan queue:work --tries=3 --backoff=5 --max-time=3600 --sleep=1
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'queue:work' > /dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  scheduler:
+    <<: *laravel-build
+    environment:
+      <<: *laravel-env
+    # Runs orders:expire-pending and events:relay-unpublished every minute.
+    command: php artisan schedule:work
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'schedule:work' > /dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # -----------------------------------------------------------------------
+  # Payment gateway — internal only, no published port, no nginx route
+  # -----------------------------------------------------------------------
+  payments:
+    build:
+      context: ./payment-gateway
+      dockerfile: Dockerfile
+    image: tickets/payments:latest
+    restart: unless-stopped
+    networks: [tickets]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-tickets}:${POSTGRES_PASSWORD}@postgres:5432/payments
+      GATEWAY_API_KEY: ${GATEWAY_API_KEY}
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8001"
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  # -----------------------------------------------------------------------
+  # Node notification service
+  # -----------------------------------------------------------------------
+  notifications:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    image: tickets/notifications:latest
+    restart: unless-stopped
+    networks: [tickets]
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      MONGO_URL: mongodb://${MONGO_USER:-tickets}:${MONGO_PASSWORD}@mongo:27017/notifications?authSource=admin
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-tickets}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      RABBITMQ_QUEUE: notifications.events
+      # Public key only. This service verifies tokens; it cannot mint them.
+      JWT_PUBLIC_KEY_FILE: /run/secrets/jwt-public.pem
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      MAIL_FROM: ${MAIL_FROM_ADDRESS:-tickets@example.com}
+      APP_URL: ${APP_URL:-http://localhost}
+    secrets:
+      - jwt-public.pem
+    depends_on:
+      mongo: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      mailpit: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 3s
+      start_period: 20s
+      retries: 5
+
+  # -----------------------------------------------------------------------
+  # .NET analytics service
+  # -----------------------------------------------------------------------
+  analytics:
+    build:
+      context: ./analytics-service
+      dockerfile: Dockerfile
+    image: tickets/analytics:latest
+    restart: unless-stopped
+    networks: [tickets]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      Mongo__ConnectionString: mongodb://${MONGO_USER:-tickets}:${MONGO_PASSWORD}@mongo:27017/?authSource=admin
+      Mongo__Database: analytics
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Port: 5672
+      RabbitMq__User: ${RABBITMQ_USER:-tickets}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD}
+      RabbitMq__Queue: analytics.events
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Analytics__Backfill__BaseUrl: http://api:9000
+    secrets:
+      - jwt-public.pem
+    depends_on:
+      mongo: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      start_period: 30s
+      retries: 5
+
+  # -----------------------------------------------------------------------
+  # Front-end builds — produce static assets into volumes nginx serves
+  # -----------------------------------------------------------------------
+  portal-build:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: tickets/portal:latest
+    restart: "no"
+    networks: [tickets]
+    volumes:
+      - portal-dist:/out
+    command: sh -c "rm -rf /out/* && cp -r /app/dist/. /out/"
+
+  cms-build:
+    build:
+      context: ./admin-cms
+      dockerfile: Dockerfile
+    image: tickets/cms:latest
+    restart: "no"
+    networks: [tickets]
+    volumes:
+      - cms-dist:/out
+    command: sh -c "rm -rf /out/* && cp -r /app/dist/. /out/"
+
+  # -----------------------------------------------------------------------
+  # Backing services
+  # -----------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    networks: [tickets]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tickets}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-tickets}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      # Creates the separate `payments` database the gateway owns.
+      - ./deploy/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tickets}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks: [tickets]
+    # Cache and sessions only. Durable event delivery is RabbitMQ's job;
+    # pointing it at an eviction-prone cache would lose events under memory
+    # pressure.
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    networks: [tickets]
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-tickets}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - rabbit-data:/var/lib/rabbitmq
+      # The topology is loaded here, not declared by the services that use it.
+      # See docs/contracts/broker-topology.md.
+      - ./infra/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - ./infra/rabbitmq/rabbitmq.conf:/etc/rabbitmq/conf.d/10-definitions.conf:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 10s
+      start_period: 30s
+      retries: 10
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    networks: [tickets]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-tickets}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 10
+
+  # A real SMTP server with a web inbox, so email is demoable end to end
+  # without anyone's credentials. Swap the SMTP_* variables for a real host in
+  # production; nothing else changes.
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    networks: [tickets]
+    ports:
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+    environment:
+      MP_MAX_MESSAGES: 500
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
+networks:
+  tickets:
+    driver: bridge
+
+volumes:
+  pg-data:
+  redis-data:
+  rabbit-data:
+  mongo-data:
+  laravel-storage:
+  portal-dist:
+  cms-dist:
+
+secrets:
+  jwt-private.pem:
+    file: ./deploy/secrets/jwt-private.pem
+  jwt-public.pem:
+    file: ./deploy/secrets/jwt-public.pem

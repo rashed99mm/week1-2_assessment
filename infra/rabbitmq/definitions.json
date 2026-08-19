@@ -1,0 +1,144 @@
+{
+  "_comment": [
+    "Broker topology, loaded by RabbitMQ at start-up.",
+    "",
+    "Declared here rather than by the services that use it. If each consumer",
+    "declared its own queue on connect, the exchange would have to exist before",
+    "the first consumer started, and any disagreement about queue arguments",
+    "between two deployed versions would raise PRECONDITION_FAILED and take the",
+    "consumer down on deploy. Declaring it once, outside all of them, removes",
+    "that whole class of problem.",
+    "",
+    "Prose version: docs/contracts/broker-topology.md",
+    "",
+    "The password hash below is for the local development password 'tickets'.",
+    "Deployments override the user via RABBITMQ_DEFAULT_USER/PASS."
+  ],
+
+  "rabbit_version": "3.13.0",
+  "rabbitmq_version": "3.13.0",
+
+  "users": [
+    {
+      "name": "tickets",
+      "password_hash": "8xkVQqPzE2fVXHcHNjTgLxLzZPZgQVpBLcMrqUxN0aE0aVUu",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": ["administrator"]
+    }
+  ],
+
+  "vhosts": [{ "name": "/" }],
+
+  "permissions": [
+    {
+      "user": "tickets",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+
+  "exchanges": [
+    {
+      "name": "tickets.events",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "tickets.events.dlx",
+      "vhost": "/",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+
+  "queues": [
+    {
+      "name": "notifications.events",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "tickets.events.dlx",
+        "x-delivery-limit": 5
+      }
+    },
+    {
+      "name": "analytics.events",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "tickets.events.dlx",
+        "x-delivery-limit": 5
+      }
+    },
+    {
+      "name": "tickets.events.dead",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum"
+      }
+    }
+  ],
+
+  "bindings": [
+    {
+      "source": "tickets.events",
+      "vhost": "/",
+      "destination": "analytics.events",
+      "destination_type": "queue",
+      "routing_key": "#",
+      "arguments": {}
+    },
+    {
+      "source": "tickets.events",
+      "vhost": "/",
+      "destination": "notifications.events",
+      "destination_type": "queue",
+      "routing_key": "order.*",
+      "arguments": {}
+    },
+    {
+      "source": "tickets.events",
+      "vhost": "/",
+      "destination": "notifications.events",
+      "destination_type": "queue",
+      "routing_key": "user.registered",
+      "arguments": {}
+    },
+    {
+      "source": "tickets.events",
+      "vhost": "/",
+      "destination": "notifications.events",
+      "destination_type": "queue",
+      "routing_key": "event.published",
+      "arguments": {}
+    },
+    {
+      "source": "tickets.events.dlx",
+      "vhost": "/",
+      "destination": "tickets.events.dead",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    }
+  ],
+
+  "policies": [],
+  "parameters": [],
+  "global_parameters": [],
+  "topic_permissions": []
+}

@@ -1,0 +1,39 @@
+<mj-text font-size="18px" font-weight="700">You're going to {{eventTitle}}</mj-text>
+
+<mj-text>Hi {{customerName}},</mj-text>
+
+<mj-text>
+  Payment received. Your {{quantity}} ticket(s) for <strong>{{eventTitle}}</strong>
+  are confirmed.
+</mj-text>
+
+{{!--
+  Referenced by content-id, not as a data URI. Gmail strips data URIs from
+  image tags, which would leave the ticket with a blank space where its
+  barcode should be. Note: MJML parses this comment as XML, so it must not
+  contain angle brackets.
+--}}
+<mj-image src="cid:ticket-qr" width="220px" alt="Entry code for order {{orderId}}" padding="16px 0" />
+
+<mj-text align="center" css-class="muted">
+  Order #{{orderId}} &middot; show this code at the door
+</mj-text>
+
+<mj-table>
+  <tr>
+    <td style="padding:6px 0;">Paid</td>
+    <td style="padding:6px 0;text-align:right;" class="total">{{money totalAmount currency}}</td>
+  </tr>
+  <tr>
+    <td style="padding:6px 0;" class="muted">Reference</td>
+    <td style="padding:6px 0;text-align:right;" class="muted">{{gatewayReference}}</td>
+  </tr>
+  <tr>
+    <td style="padding:6px 0;" class="muted">Paid at</td>
+    <td style="padding:6px 0;text-align:right;" class="muted">{{formatDate paidAt}} UTC</td>
+  </tr>
+</mj-table>
+
+<mj-button href="{{orderUrl}}" background-color="#1f2933" border-radius="6px">
+  View your order
+</mj-button>

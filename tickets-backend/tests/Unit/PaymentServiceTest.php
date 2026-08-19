@@ -27,7 +27,7 @@ class PaymentServiceTest extends TestCase
     {
         parent::setUp();
 
-        $this->service = new PaymentService();
+        $this->service = new PaymentService;
     }
 
     /**

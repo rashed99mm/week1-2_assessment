@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Domain\Events\DomainEventRecorder;
 use App\Models\Event;
 use App\Models\Order;
 use App\Models\Payment;
@@ -39,7 +40,14 @@ class OrderServiceTest extends TestCase
         $this->repo = Mockery::mock(OrderRepositoryInterface::class);
         $this->paymentService = Mockery::mock(PaymentService::class);
 
-        $this->service = new OrderService($this->repo, $this->paymentService);
+        // The real recorder, not a double: it writes to the outbox table on
+        // the same connection, so these tests also confirm that recording an
+        // event does not interfere with the reservation transaction.
+        $this->service = new OrderService(
+            $this->repo,
+            $this->paymentService,
+            app(DomainEventRecorder::class),
+        );
     }
 
     /**
@@ -93,7 +101,7 @@ class OrderServiceTest extends TestCase
             'quantity' => 10,
         ]);
 
-        $expected = new Order();
+        $expected = new Order;
         $this->repo->shouldReceive('create')
             ->once()
             ->with(Mockery::on(function (array $data) use ($event, $ticket): bool {

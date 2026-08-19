@@ -1,0 +1,13 @@
+<mj-text font-size="18px" font-weight="700">Welcome to Tickets</mj-text>
+
+<mj-text>Hi {{name}},</mj-text>
+
+<mj-text>
+  Your account is ready. Browse what's on, pick your seat from the venue map,
+  and check out in a couple of clicks.
+</mj-text>
+
+<mj-text css-class="muted">
+  You'll get an email whenever you place an order, and your tickets arrive as
+  soon as payment clears.
+</mj-text>

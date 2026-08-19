@@ -1,28 +1,47 @@
 # tic-ets
 
-A three-service event ticketing platform. Browse events, pick a seat from a map
+A six-service event ticketing platform. Browse events, pick a seat from a map
 that adapts to the venue, walk the room in first person before you commit, and
-check out through a mock payment gateway.
+check out through a mock payment gateway — all behind a single nginx edge
+proxy with real-time admin notifications and an analytics dashboard.
 
 ```
-                      ┌────────────────────────────────────────────┐
-  Browser ───────────►│           frontend (React 19 + Vite)        │
-                      │  seat maps · 3D venue · checkout            │
-                      └───────────────────────┬────────────────────┘
-                                              │  /api  (JWT Bearer)
-                                              ▼
-                      ┌────────────────────────────────────────────┐
-                      │          tickets-backend (Laravel 13)       │
-                      │   Controllers → Services → Repositories     │──► SQLite
-                      │   events / ticket-types / orders / payments │
-                      │        └── PaymentService ── HTTP ──────────┤
-                      └───────────────────────┬────────────────────┘
-                                              │  /api/v1/payments/charge
-                                              ▼
-                      ┌────────────────────────────────────────────┐
-                      │          payment-gateway (FastAPI)          │
-                      │   charge / get / refund ──► PaymentService  │──► SQLite
-                      └────────────────────────────────────────────┘
+                        ┌─────────────────────────────────────────────┐
+   Browser ────────────►│            frontend (React 19 + Vite)       │
+                        │   seat maps · 3D venue · checkout            │
+                        └──────────────────────┬──────────────────────┘
+                                               │  /api  (JWT Bearer)
+                                               ▼
+                        ┌─────────────────────────────────────────────┐
+                        │          tickets-backend (Laravel 13)        │
+                        │   Controllers → Services → Repositories      │──► PostgreSQL
+                        │   events / ticket-types / orders / payments  │
+                        │   └── publishes domain events ───────────────┤──► RabbitMQ
+                        │        └── PaymentService ── HTTP ───────────┤
+                        └──────────────────────┬──────────────────────┘
+                                               │  /api/v1/payments/charge
+                                               ▼
+                        ┌─────────────────────────────────────────────┐
+                        │          payment-gateway (FastAPI)           │
+                        │   charge / get / refund ──► PaymentService   │──► PostgreSQL
+                        └─────────────────────────────────────────────┘
+
+   RabbitMQ ──────────►┌─────────────────────────────────────────────┐
+                       │       notification-service (Node.js)         │
+                       │   email (MJML) · Socket.IO · in-app notifs   │──► MongoDB
+                       └─────────────────────────────────────────────┘
+
+   RabbitMQ ──────────►┌─────────────────────────────────────────────┐
+                       │       analytics-service (.NET 9)             │
+                       │   KPIs · revenue · sales projections         │──► MongoDB
+                       └──────────────────────┬──────────────────────┘
+                                               │  /analytics/api
+                                               ▼
+                        ┌─────────────────────────────────────────────┐
+                        │            admin-cms (Angular 20)            │
+                        │   dashboard · events · orders · users        │
+                        │   notifications (real-time via Socket.IO)    │
+                        └─────────────────────────────────────────────┘
 ```
 
 ## Services
@@ -30,17 +49,44 @@ check out through a mock payment gateway.
 | Service | Path | Stack | URL |
 |---|---|---|---|
 | `frontend` | `frontend/` | React 19, TypeScript, Vite 8, Tailwind v4, three.js | `http://localhost:5173` |
-| `tickets-backend` | `tickets-backend/` | Laravel 13, PHP 8.4, SQLite, JWT (HS256) | `http://127.0.0.1:8000` |
+| `admin-cms` | `admin-cms/` | Angular 20, TypeScript | `http://localhost:4200` |
+| `tickets-backend` | `tickets-backend/` | Laravel 13, PHP 8.4, PostgreSQL, JWT (RS256) | `http://127.0.0.1:8000` |
 | `payment-gateway` | `payment-gateway/` | FastAPI, SQLAlchemy 2.0, Pydantic 2.x | `http://127.0.0.1:8001` |
+| `notification-service` | `notification-service/` | Node.js ≥22, Fastify 5, Socket.IO, MJML | `http://127.0.0.1:3000` |
+| `analytics-service` | `analytics-service/` | ASP.NET Core 9, C#, MongoDB | `http://127.0.0.1:8080` |
+| `nginx` | `deploy/nginx/` | Reverse proxy, static assets | `http://localhost:80` |
 
 ---
 
 ## Quick start
 
-Run all three. The frontend proxies `/api` and `/storage` to the Laravel app,
-so everything is same-origin in development.
+### Docker Compose (zero install)
 
-### 1. tickets-backend (Laravel)
+The fastest way to run the entire stack. Requires Docker Desktop.
+
+```powershell
+docker compose up -d --wait
+```
+
+This builds all six services, runs migrations, seeds the database, and blocks
+until every healthcheck passes. The app is live at `http://localhost:80`.
+
+- **Storefront:** `http://localhost/`
+- **Admin CMS:** `http://localhost/admin/`
+- **Mail inbox:** `http://localhost:8025` (Mailpit)
+- **Demo account:** `admin@example.com` / `password`
+
+To tear down:
+
+```powershell
+docker compose down -v
+```
+
+### Manual setup (development)
+
+Run each service separately for hot-reload and debugging.
+
+#### 1. tickets-backend (Laravel)
 
 ```powershell
 cd tickets-backend
@@ -62,7 +108,12 @@ cmd /c mklink /J "public\storage" "storage\app\public"
 Required `.env` values:
 
 ```
-DB_CONNECTION=sqlite
+DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=tickets
+DB_USERNAME=tickets
+DB_PASSWORD=<your password>
 APP_URL=http://127.0.0.1:8000
 PAYMENT_GATEWAY_URL=http://127.0.0.1:8001
 JWT_SECRET=<generated by php artisan jwt:secret>
@@ -74,18 +125,42 @@ console and queue contexts have no request and fall back to `APP_URL`.
 
 Seeding creates the demo account **`admin@example.com` / `password`**.
 
-### 2. payment-gateway (FastAPI)
+#### 2. payment-gateway (FastAPI)
 
 ```powershell
 cd payment-gateway
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\python -m alembic upgrade head
 .venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port 8001
 ```
 
 Interactive docs: <http://127.0.0.1:8001/docs>
 
-### 3. frontend (React)
+#### 3. notification-service (Node.js)
+
+```powershell
+cd notification-service
+npm ci
+npm run build
+npm start
+```
+
+Requires a running RabbitMQ and MongoDB instance. Configure via environment
+variables (see `src/core/config.ts`).
+
+#### 4. analytics-service (.NET)
+
+```powershell
+cd analytics-service
+dotnet restore
+dotnet build
+dotnet run --project src/Analytics.Api
+```
+
+Requires a running RabbitMQ and MongoDB instance.
+
+#### 5. frontend (React)
 
 ```powershell
 cd frontend
@@ -99,6 +174,17 @@ npm run dev
 | `npm run build` | `tsc -b && vite build` |
 | `npm run preview` | Serve the production build |
 | `npm run typecheck` | Types only, no emit |
+
+#### 6. admin-cms (Angular)
+
+```powershell
+cd admin-cms
+npm ci
+ng serve
+```
+
+Dev server runs on `http://localhost:4200` with a proxy configuration that
+forwards `/api`, `/analytics`, and `/notifications` to the backend services.
 
 ---
 
@@ -115,9 +201,6 @@ npm run dev
 | `/checkout` | auth | Two-step order and payment |
 | `/orders`, `/orders/:id` | auth | Order history |
 | `/login`, `/register` | guests only | JWT auth |
-
-Admin routes are authentication-gated only. There is no role column on `users`,
-so any signed-in account can reach them.
 
 ### Seat maps
 
@@ -178,9 +261,243 @@ that preference is threaded through a hook.
 
 ---
 
+## Admin CMS
+
+The admin dashboard is an Angular 20 SPA served under `/admin/` on the same
+origin as the storefront.
+
+### Features
+
+| Feature | Route | Description |
+|---|---|---|
+| **Login** | `/login` | Guest-only; redirects to dashboard if already authenticated |
+| **Dashboard** | `/dashboard` | Overview with KPIs, revenue charts, order funnel |
+| **Events** | `/events` | CRUD for events with cover image uploads |
+| **Ticket Types** | `/ticket-types` | Manage pricing and capacity per event |
+| **Orders** | `/orders` | View and manage all orders |
+| **Event Types** | `/event-types` | Manage the eight seeded categories |
+| **Users** | `/users` | User administration |
+| **Notifications** | `/notifications` | In-app notification inbox with real-time unread badge |
+
+### Architecture
+
+- **Standalone components** with `@OnPush` change detection and signals
+- **Route guards** — `adminGuard` protects all authenticated routes;
+  `guestGuard` keeps logged-in users off the login page
+- **Real-time** — Socket.IO connection pushes new notifications as they arrive
+  from the notification service
+- **Proxy** — dev server forwards `/api` → Laravel, `/analytics` → .NET,
+  `/notifications` → Node.js (with WebSocket support)
+
+---
+
+## Notification Service
+
+A Node.js microservice that consumes domain events and dispatches notifications
+through three channels: email, in-app storage, and real-time WebSocket push.
+
+### What it handles
+
+| Event | Action |
+|---|---|
+| `user.registered` | Welcome email + admin notification |
+| `order.created` | Order confirmation email + in-app notification |
+| `order.paid` | Payment receipt + e-ticket (QR code) email |
+| `order.refunded` | Refund confirmation email |
+| `order.cancelled` | Cancellation email |
+| `event.published` | Admin notification (no email — "mailing users is a marketing decision") |
+
+### Architecture
+
+- **RabbitMQ consumer** — consumes from `notifications.events` quorum queue with
+  exponential-backoff reconnect (1s → 30s)
+- **Deduplication** — insert-is-check pattern in MongoDB; duplicate key = skip
+- **Email outbox** — emails are queued in MongoDB, then flushed every 10s via
+  Nodemailer. Templates are pre-compiled MJML + Handlebars
+- **Socket.IO** — JWT-authenticated WebSocket push. Users join `user:<id>` rooms;
+  admins join an `admins` broadcast room
+- **Delivery limit** — messages that fail 5 times are dead-lettered
+
+### Tech stack
+
+| Component | Library |
+|---|---|
+| HTTP | Fastify 5 |
+| WebSocket | Socket.IO 4 |
+| Message broker | amqplib (RabbitMQ) |
+| Database | Mongoose 8 (MongoDB) |
+| Email | Nodemailer + MJML + Handlebars |
+| Auth | jsonwebtoken (RS256 verify-only) |
+| Validation | Zod |
+| QR codes | qrcode (for e-ticket emails) |
+
+---
+
+## Analytics Service
+
+A CQRS read-side projection service built with ASP.NET Core 9. It consumes
+domain events from RabbitMQ and projects them into pre-computed MongoDB
+collections optimised for dashboard queries.
+
+### Endpoints
+
+All endpoints require admin JWT authentication.
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/v1/analytics/kpis` | Revenue, orders, tickets sold, avg order value |
+| `GET /api/v1/analytics/revenue-over-time` | Daily revenue buckets with granularity |
+| `GET /api/v1/analytics/sales-by-event` | Sales breakdown per event |
+| `GET /api/v1/analytics/sales-by-ticket-type` | Sales breakdown per ticket type |
+| `GET /api/v1/analytics/order-status-funnel` | Created → paid → refunded/cancelled funnel |
+| `GET /api/v1/analytics/top-events` | Ranked events by revenue |
+| `GET /health` | `ok` / `degraded` / `unhealthy` |
+
+### Event processing
+
+| Event | Projector | What happens |
+|---|---|---|
+| `order.created` | OrderProjector | Upserts order fact, increments `orders_created` |
+| `order.paid` | OrderProjector | Updates status, increments revenue and tickets sold |
+| `order.refunded` | OrderProjector | Updates status, increments `refunded_amount` |
+| `order.cancelled` | OrderProjector | Updates status (no revenue movement) |
+| `event.published` | DimensionProjector | Upserts event dimension (title, venue, dates) |
+| `user.registered` | DimensionProjector | Upserts user dimension (name, email, role) |
+
+### MongoDB collections
+
+| Collection | Purpose |
+|---|---|
+| `order_facts` | One row per order — the main fact table |
+| `revenue_daily` | Pre-aggregated daily revenue buckets per event |
+| `event_dims` | Event dimension table |
+| `user_dims` | User dimension table |
+| `processed_events` | Idempotency / dedup ledger (unique index) |
+
+---
+
+## Architecture
+
+### Domain events
+
+The backend publishes six domain event types through an **outbox pattern** for
+reliable at-least-once delivery:
+
+| Event | Published by | Consumed by |
+|---|---|---|
+| `user.registered` | AuthController | Notifications, Analytics |
+| `order.created` | OrderService | Notifications, Analytics |
+| `order.paid` | OrderService | Notifications, Analytics |
+| `order.refunded` | OrderService | Notifications, Analytics |
+| `order.cancelled` | OrderService | Analytics |
+| `event.published` | EventService | Notifications, Analytics |
+
+Events are written to a `domain_events` table in the same transaction as the
+state change, then relayed by a queue job. This guarantees no events are lost
+even if the broker is temporarily unavailable.
+
+### RabbitMQ topology
+
+| Exchange | Type | Purpose |
+|---|---|---|
+| `tickets.events` | topic | Main event exchange — Laravel publishes here |
+| `tickets.events.dlx` | fanout | Dead-letter exchange for failed messages |
+
+| Queue | Routing key | Consumer | Delivery limit |
+|---|---|---|---|
+| `notifications.events` | `order.*`, `user.registered`, `event.published` | Notification service | 5 |
+| `analytics.events` | `#` (all events) | Analytics service | 5 |
+| `tickets.events.dead` | — | Terminal sink for poison messages | — |
+
+All queues are **quorum queues** (Raft-replicated). Topology is declared
+centrally in `infra/rabbitmq/definitions.json`, not by individual services.
+
+### Authentication
+
+- **JWT RS256** — the Laravel backend signs tokens with a private key; the
+  notification and analytics services verify with the public key only
+- **Shared envelope** — all services return the same JSON response format:
+  `{ success, message, status_code, data, errors }`
+- **Service-to-service** — the payment gateway authenticates requests via a
+  shared `GATEWAY_API_KEY`
+
+### Order lifecycle
+
+```
+Created → Pending → Paid → (Refunded)
+                  ↘ Cancelled
+```
+
+- Stock is reserved atomically at order creation (`SELECT FOR UPDATE`)
+- 15-minute reservation window with automated expiry sweeper
+- Payment goes through the FastAPI gateway, then status transitions with
+  domain event emission
+- Idempotent transitions (calling cancel twice is safe)
+
+---
+
+## Infrastructure
+
+### Docker Compose (14 services)
+
+| Tier | Services |
+|---|---|
+| **Edge** | nginx (port 80) |
+| **Application** | api, queue, scheduler, payments, notifications, analytics |
+| **Build** | portal-build, cms-build (one-shot, copy dist/ into volumes) |
+| **Backing** | PostgreSQL, Redis, RabbitMQ, MongoDB |
+| **Email** | Mailpit (port 8025 UI, 1025 SMTP) |
+
+### Databases
+
+| Database | Engine | Used by | Purpose |
+|---|---|---|---|
+| `tickets` | PostgreSQL 16 | Laravel API | Core app data (users, events, orders) |
+| `payments` | PostgreSQL 16 | FastAPI gateway | Payment records (separate schema) |
+| `notifications` | MongoDB 7 | Node service | Notification log, email outbox, dedup |
+| `analytics` | MongoDB 7 | .NET service | Read model, aggregations, dedup |
+
+### Ports
+
+| Port | Service | Exposure |
+|---|---|---|
+| **80** | nginx | Public |
+| **8025** | Mailpit UI | Public |
+| 9000 | Laravel (FastCGI) | Internal |
+| 8001 | FastAPI gateway | Internal |
+| 3000 | Notification service | Internal |
+| 8080 | Analytics service | Internal |
+| 5432 | PostgreSQL | Internal |
+| 6379 | Redis | Internal |
+| 5672 | RabbitMQ | Internal |
+| 27017 | MongoDB | Internal |
+
+Only nginx and Mailpit publish ports to the host.
+
+---
+
+## CI/CD
+
+GitHub Actions pipeline (`.github/workflows/ci.yml`) runs on push to
+`master`/`main` and all pull requests:
+
+| Job | What it does |
+|---|---|
+| **PHP - Pint** | Laravel Pint formatter in `--test` mode |
+| **PHP - PHPUnit (SQLite)** | 68 tests / 204 assertions against in-memory SQLite + domain event contract validation |
+| **PHP - PHPUnit (PostgreSQL)** | Same suite against a real PostgreSQL 16 container |
+| **Python - pytest** | Payment gateway tests + Alembic migration check |
+| **Node - Vitest** | Notification service tests, lint, typecheck, build |
+| **.NET - xUnit** | Analytics service tests with EphemeralMongo |
+| **Portal - build** | React typecheck + Vite production build |
+| **CMS - build** | Angular production build + base href check |
+| **E2E - compose smoke** | `docker compose up -d --wait` → curl test suites → teardown |
+
+---
+
 ## API
 
-Both services return the same envelope:
+Both the Laravel backend and payment gateway return the same envelope:
 
 ```json
 {
@@ -195,7 +512,7 @@ Both services return the same envelope:
 For paginated endpoints `data` is the raw Laravel paginator, so results are at
 `data.data[]` alongside `data.total`, `data.current_page` and `data.last_page`.
 
-### tickets-backend — `/api`
+### tickets-backend — `/api/v1`
 
 **Public**
 
@@ -238,6 +555,31 @@ For paginated endpoints `data` is the raw Laravel paginator, so results are at
 **Mock approval rule** — approved when `amount <= 1000.00` **and** `card_token`
 starts with `4242`; declined otherwise.
 
+### notification-service — `/api/v1`
+
+| Method | URI | Description |
+|---|---|---|
+| GET | `/notifications` | List notifications for the current user |
+| PATCH | `/notifications/{id}` | Mark as read |
+| GET | `/notifications/unread-count` | Unread count |
+| GET | `/health` | Health check |
+
+WebSocket endpoint: `/notifications/ws` (Socket.IO, JWT auth required).
+
+### analytics-service — `/api/v1`
+
+| Method | URI | Description |
+|---|---|---|
+| GET | `/analytics/kpis` | Revenue, orders, tickets, avg order value |
+| GET | `/analytics/revenue-over-time` | Daily revenue buckets |
+| GET | `/analytics/sales-by-event` | Sales per event |
+| GET | `/analytics/sales-by-ticket-type` | Sales per ticket type |
+| GET | `/analytics/order-status-funnel` | Order lifecycle funnel |
+| GET | `/analytics/top-events` | Ranked events by revenue |
+| GET | `/health` | `ok` / `degraded` / `unhealthy` |
+
+All analytics endpoints require admin JWT and accept `from`, `to` date filters.
+
 ---
 
 ## Event cover images
@@ -277,14 +619,23 @@ php artisan test                            # 68 tests / 204 assertions
 cd payment-gateway
 .venv\Scripts\python -m pytest tests -v
 
+# Notification service — handlers, consumer, templates
+cd notification-service
+npm test
+
+# Analytics service — projectors, pipeline, auth
+cd analytics-service
+dotnet test
+
 # Frontend — types and production build
 cd frontend
 npm run typecheck
 npm run build
-```
 
-There is no frontend test runner configured; `typecheck` and `build` are the
-gate.
+# Admin CMS — build verification
+cd admin-cms
+ng build --configuration production
+```
 
 ### End-to-end curl suites
 
@@ -309,3 +660,7 @@ bash test-cases.sh                                        # Linux / CI
   stock check happens at order time against ticket-type quantity.
 - **`filters[...]`** falls through to a `LIKE` on any column name supplied, which
   is convenient in development and would want a whitelist before production.
+- **Socket.IO is single-instance only.** Scaling out would require the Socket.IO
+  Redis adapter.
+- **The payment gateway is mock-only.** No real payment processing — card token
+  `4242*` is approved, everything else is declined.
